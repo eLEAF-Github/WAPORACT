@@ -1,7 +1,7 @@
 # Water Productivity in practice - tools  
 _Version 1.0_  
 _2 October 2021_   
-_Authors: [Roeland de Koning](Roeland.de.Koning@eleaf.com), [Abdur Rahim Safi](Abdur.Rahim@eleaf.com), [Annemarie Klaasse](annemarie.klaasse@eleaf.com)_
+_Authors: Roeland de Koning (Roeland.de.Koning@eleaf.com), Abdur Rahim Safi (Abdur.Rahim@eleaf.com), Annemarie Klaasse (annemarie.klaasse@eleaf.com)_
 
 ## Introduction  
 
