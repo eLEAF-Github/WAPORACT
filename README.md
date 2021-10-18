@@ -1,6 +1,3 @@
-# WAPORPIP
-generic tools and pipelines that support utilization of WaPOR data as part of  the Water Productivity in Practice project (WaterPIP: https://waterpip.un-ihe.org/welcome-waterpip)
-
 # Water Productivity in practice - tools  
 _Version 1.0_  
 _2 October 2021_   
