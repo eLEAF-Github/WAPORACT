@@ -1,0 +1,20 @@
+name: waterpip
+channels:
+  - defaults
+dependencies:
+  - gdal>=3.*
+  - matplotlib>=3.3.*
+  - notebook>=6.1.*
+  - numpy>=1.19.*
+  - pandas>=1.1.*
+  - geopandas>=0.9.*
+  - pip>=20.2.2=py37_0
+  - python>=3.7
+  - fiona
+  - shapely>=1.6.*
+  - requests>=2.24.*
+  - rtree>=0.9.3
+  - rasterio
+  - openpyxl
+
+

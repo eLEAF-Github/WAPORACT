@@ -1,0 +1,90 @@
+waterpip package setup:
+
+1. Download Miniconda and run the .exe-file
+
+miniconda url: https://docs.conda.io/en/latest/miniconda.html
+
+save the program in C:\Miniconda3 or similar (avoid paths with spaces)
+
+if you are not allowed to create this folder, create it manually via FileExplorer before to run the installer
+allow adding to system environment variables when asked
+
+if you miss the chance to add conda to your env variables. You can do this manually by searchign for *advanced system settings* in windows search bar, opening it and then click on *environmental variables* opening a new window.
+
+Then in this window add ..\Miniconda3 (your version of the path) to the Path variable.
+
+Having done this conda should be available from the terminal
+
+If having issues beyond this point look it up online. Google and stackoverflow provide alot of anwsers
+
+###########################################################
+2. Next open command terminal and run 
+
+`conda info` (do not enter the `` marks)
+
+it should return some info about conda. if it does not work even after restarting the terminal there is something wrong with your environmental variables or conda installation.
+
+Once it does work you can setup the waterpip environment
+
+- navigate to the directory containing the waterpip.yml file by typing in 'cd' then the path to the directory as below:
+
+`cd <path>/git/waterpip` (enter your path in <path>)
+
+- create the conda environment from the yml file by runnin the floowling in the terminal once you are in the waterpip directory:
+
+`conda env create -f environment.yml`
+
+- activate the environment to check:
+
+`conda activate waterpip`
+
+-  the new env should have activated for you and should be visible on the left in your terminal next to where you are typing
+
+- Next change to the location of the cloned repository
+
+`cd <path>/git/waterpip` (enter your path in <path>) if needed
+
+Note: make sure your in the waterpip working directory, this is the folder that holds the file setup.py:
+
+- then install the waterpip package itself using the setup.py file by running:
+
+`pip install .`
+###########################################################
+3. install jupyter lab or setup your chosen IDE
+
+- you can install juypter notebook in terminal using the following code. the best method is to do this when your env is activate
+
+so run:
+
+`conda activate waterpip`
+
+then:
+
+`conda install -c conda-forge jupyterlab`
+
+activate by running:
+
+`jupyter notebook`
+
+for more details on install juypter please see: https://jupyter.org/install
+
+###########################################################
+4. Open the wapor data download notebook
+
+once you have access to juypter notebook or your chosen IDE open the next notebook in your chosen location to start downloading wapor data
+
+open the next juypter notebook using your chosen application: wapor_download_data.ipynb
+
+in terminal you can open the notebook by running:
+
+move to the waterpip location:
+
+'cd <path>/git/waterpip`
+
+then run:
+
+`jupyter notebook`
+
+
+
+

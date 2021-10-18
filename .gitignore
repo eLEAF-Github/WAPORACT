@@ -1,0 +1,34 @@
+### File extensions
+*.pyc
+*.tif
+*.shp
+*.shx
+*.prj
+*.zip
+*.7z
+*.rar
+*.pyo
+*.jpg
+*.jpeg
+*.tiff
+*.png
+
+### Directories
+.vscode
+__pychache__
+.idea/
+.Rproj
+.Rhistory
+
+## Build files
+.installed.cfg
+build
+bin
+develop-eggs
+dist
+downloads
+eggs
+parts
+*.egg-info
+lib
+lib64
