@@ -10,9 +10,10 @@ Increasing competition for and limited availability of water and land resources 
 ## Toolset 
 
 The developed tools are based on satellite observations of the actual crop production and water consumption from the WaPOR database. Three types of tools are introduced here: 
+
+- Descriptive Statistics (DS) 
 - Performance Assessment Indicators (PAI)
 - Crop Yield Factors (YF)
-- Descriptive Statistics (DS) 
 
 PAIs are used to understand how agricultural systems are performing and their potential for improvement. YF helps identify the underlying causes of spatio-temporal variations in crop yield and growth. DS quantitatively describe WaPOR data and provide meaningful information to the users. The tools focus on the actual performance of the agriculture system and the underlying biophysical factors, but as a satellite-based system, it cannot provide information on underlying socio-ecological variables. 
 
@@ -21,7 +22,7 @@ NOTE: For users that have not used Github repositories and Conda/Python packages
 
 **Download**  
 
-**Basic Statistics**  
+**Descriptive Statistics**  
 The purpose of descriptive statistics is to quantitatively describe WaPOR data and provide meaningful information to the users. For detailed information on descriptive statistics [click here](Basic Statistics)
 
 **Performance Assessment Indicators**  
