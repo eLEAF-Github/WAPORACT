@@ -49,5 +49,3 @@ This repo was developed by [eLEAF](https://www.eleaf.com) under the [WaterPIP pr
 - [WaPOR application catalogue](http://www.fao.org/in-action/remote-sensing-for-water-productivity/use-casesresources/en/)
 - [WaPOR master classes](https://thewaterchannel.tv/videos/june-10-2020-monitoring-water-productivity-using-wapor-part-1/)
 
-## License  
-This work is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
