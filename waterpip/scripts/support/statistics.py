@@ -17,6 +17,7 @@ from timeit import default_timer
 from typing import Union
 
 import math
+from attr import field
 import fiona
 import rasterio
 from rasterio import features
@@ -25,38 +26,67 @@ from shapely.geometry import shape
 import numpy as np
 import pandas as pd
 
+from waterpip.scripts.retrieval.wapor_land_cover_classification_codes import wapor_lcc
+
+from waterpip.scripts.structure.wapor_structure import WaporStructure
+
 from waterpip.scripts.support import raster
+from waterpip.scripts.support import vector 
 
 ########################################################
 # Dataframe Functions
 ########################################################
 def dict_to_dataframe(
-    in_dict: Union[dict, list], 
-    orient: str = 'index', 
-    combine_keys: bool=False):
+    in_dict: Union[dict, list]):
     """
     transform dict, nested dict or list of dicts to dataframe
     """
+    temp_list = []
+    
     # transform dictionary to dataframe
     if isinstance(in_dict, list):
-        # list of dicts to dataframe
-        out_dataframe = pd.DataFrame(in_dict)
-
-    else:
-        keys = list(in_dict.keys())
-        if isinstance(in_dict[keys[0]], dict):
-            if combine_keys:
-                # nested dict to dataframe
-                temp_dict = {(i,j): in_dict[i][j] for i in in_dict.keys() for j in in_dict[i].keys()}
-            else: 
-                temp_dict = in_dict
+        # check the list contains only dicitonaries
+        if not all(isinstance(item,dict) for item  in in_dict):
+            raise AttributeError('if you provide a list to dict_to_dataframe, it must contain '
+                ' dictionaries')  
         else:
-            # dict to dataframe
-            temp_dict = in_dict
+            # check each dict in the list contains no dictionaries
+            for item in in_dict:
+                item_keys = item.keys()
+                if any(isinstance(item[item_key],dict) for item_key in item_keys):
+                    raise AttributeError('dict_to_dataframe accepts a list of dicts, a dict or nested dicts,\n'
+                    ' (dict of dicts), double nested dicts or a list of nested dicts or more are not accepted')
 
-        out_dataframe = pd.DataFrame.from_dict(
-            temp_dict,
-            orient=orient)
+            temp_list = in_dict
+
+    elif isinstance(in_dict, dict):
+        # check if it is a single dict or nested dict
+        dict_keys = in_dict.keys()
+        if any(isinstance(in_dict[key],dict) for key in dict_keys):
+            # if a nested dic make sure all values are dicts
+            if all(isinstance(in_dict[key],dict) for key in dict_keys):
+                # make sure no nested dicts have nested dicts
+                for key in dict_keys:
+                    subdict_keys = in_dict[key].keys()
+                    if any(isinstance(in_dict[key][subkey],dict) for subkey in subdict_keys):
+                        raise AttributeError('dict_to_dataframe accepts a list, dict or nested dict,'
+                            ' (dict of dicts), dobule nested dicts or more are not accepted')
+
+                # no double nested dicts found, un-nesting now
+                for key in dict_keys:
+                    in_dict[key]['dict_key'] = key
+                    temp_list.append(in_dict[key])
+
+            else: 
+                raise AttributeError('if nested dicts are provided all entries'
+                    ' in the top level dict need to be dictionaries')
+
+        else:
+            # assign singular dict to a list
+            temp_list = [in_dict]
+
+    # write list of dicts to dataframe
+    out_dataframe = pd.DataFrame(temp_list)
 
     return out_dataframe
 
@@ -65,8 +95,7 @@ def output_table(
     table: Union[list,dict, pd.DataFrame],
     output_file_path: str, 
     output_formats: list = ['.csv', '.xlsx'],
-    csv_seperator: str = ';',
-    orient: str = 'columns'):
+    csv_seperator: str = ';'):
     """
     Description:
         takes a list of dicitonaries, a dictionary, a nested dictionary or 
@@ -80,8 +109,6 @@ def output_table(
         output_formats: other formats to output the file as
         csv_seperator: if output format includes csv then this sep
         is used
-        orient: orientation to cosntruct the dataframe in when working from dict
-        or nested dict
 
     Return:
         int: 0    
@@ -104,7 +131,7 @@ def output_table(
     if isinstance(table, pd.DataFrame):
         output_df = table
     else:
-        output_df = dict_to_dataframe(table, orient=orient)
+        output_df = dict_to_dataframe(table)
     
     for out_path, outf, out_process in output_paths:
         if outf == '.csv':
@@ -157,9 +184,445 @@ def floor_minus(a,b):
         c = 0
     return c
 
+########################################################
+# statistics sub Functions
+########################################################
+def generate_zonal_stats_column_and_function(
+    input_name: str,
+    statistic: str, 
+    waterpip_files: bool=False):
+    """
+    Description:
+        generates a column name for the zonal stat calculated using a combination og the input_name and 
+        statistic as well retrieving the numpy fucniton required to carry it out.
+    
+    Args:
+        input_name: name to sue in the column
+        statistic: statistic keyword used in the input name as well as being used to retrieve the 
+        required numpy function
+        waterpip_files: if True assumes a standardised waterpip file path has been provided for 
+        the input name and deconstructs it to provide an automatic column name 
+
+    Return:
+        tuple: column name, numpy function
+    """
+    # assign all numpy functions to a dict for use
+    numpy_dict = {'sum': np.nansum, 'mean': np.nanmean, 'count': np.count_nonzero, 'stddev': np.nanstd, 
+    'min': np.nanmin, 'max': np.nanmax, 'median': np.nanmedian, 
+    'percentile': np.nanpercentile, 'variance': np.nanvar, 'quantile': np.nanquantile, 
+    'cumsum': np.nancumsum, 'product': np.nanprod,'cumproduct': np.nancumprod }
+
+    # generate numpy function
+    if statistic not in numpy_dict.keys():
+        raise KeyError('statistic: {} not found among numpy options: {}'.format(statistic,numpy_dict.keys()))
+
+    else:
+        numpy_function = numpy_dict[statistic]
+
+    # generate column name
+    if waterpip_files:
+        try:
+            name_dict = WaporStructure.deconstruct_output_file_name(input_name)
+            column_name = statistic + '_' + name_dict['description'] + '_' + name_dict['period_start_str'] + '_' + name_dict['period_end_str']
+        except:
+            name_dict = WaporStructure.deconstruct_input_file_name(input_name)
+            column_name = statistic + '_' + name_dict['raster_id']
+    else:
+        column_name = statistic + '_' + input_name
+    
+    return column_name, numpy_function
 
 ########################################################
-# Statistical Functions
+# zonal statistics Functions
+########################################################
+def calc_field_statistics( 
+    fields_shapefile_path: str,
+    input_rasters: list,
+    output_csv_path: str=None,
+    field_stats: list=['min', 'max', 'mean', 'sum', 'stddev'],
+    id_key: str='wpid',
+    out_dict: bool=False,
+    waterpip_files: bool=False):
+    """
+    Description:
+        calculate various statistics per field from a raster using the shapefile to identify the fields
+
+    Args:
+        fields_shapefile_path: path to the shapefile defining the fields
+        input_rasters: list of rasters/vrts to carry out zonal statistics on
+        field_stats: list of statistics to carry out, also used in the column names 
+        id_key: name of shapefile column/feature dictionary key providing the feature indices 
+        wpid is a reliable autogenerated index provided while making the crop mask
+        (note: also handy for joining tables and the crop mask shape/other shapes back later) 
+        out_dict: if true outputs a dictionary instead of a dataframe
+        output_csv_path: path to output the csv too if provided
+        waterpip_files: if True assumes a standardised waterpip file path has been provided for 
+        the input name and deconstructs it to provide an automatic column name
+
+    Return:
+        tuple: dataframe/dict made, path to the output csv
+    """
+    # check if column identifier exists in the shapefile
+    vector.check_column_exists(shapefile_path=fields_shapefile_path, column=id_key)
+
+    # check for multiple rasters or vrts
+    multiple_rasters = False
+
+    if any('vrt' in os.path.splitext(raster)[1] for raster in input_rasters):
+        multiple_rasters = True
+
+    if len(input_rasters) > 1:
+        multiple_rasters = True
+
+    if multiple_rasters:
+        print('attempting to calculate zonal stats for multiple rasters or a vrt')
+        stats = multiple_raster_zonal_stats(
+            input_shapefile_path=fields_shapefile_path,
+            raster_path_list=input_rasters,
+            field_stats=field_stats,
+            out_dict=out_dict,
+            id_key=id_key,
+            waterpip_files=waterpip_files
+            )
+    else:
+        print('attempting to calculate zonal stats for a single raster')
+        stats = single_raster_zonal_stats(
+            input_shapefile_path=fields_shapefile_path,
+            input_raster_path=input_rasters[0],
+            field_stats=field_stats,
+            out_dict=out_dict,
+            id_key=id_key,
+            waterpip_files=waterpip_files
+            )
+
+    # if a csv is wanted as output transfrom as needed and create it
+    if output_csv_path:
+        if isinstance(stats, dict):
+            stats_csv = dict_to_dataframe(in_dict=stats)
+        else:
+            stats_csv = stats 
+        stats_csv.to_csv(output_csv_path, sep = ';')
+        print('sep used for the csv is: ;')
+
+    return stats, output_csv_path
+
+
+##########################
+def multiple_raster_zonal_stats(
+    input_shapefile_path: str,    
+    raster_path_list: list,
+    field_stats: list,
+    out_dict: bool=False,
+    id_key: str ='wpid',
+    waterpip_files: bool=False): 
+    """
+    Description:
+        rasterize the features in the shapefile according to the
+        template raster provided and extract the indices corresponding 
+        to each feature
+
+        uses the dictionary made and the input_raster_path and calculates statistics per field
+        in the raster using the index to identify the cells within each field
+
+    Args:
+        input_shapefile_path: shapefile to retireve raster indices for per feature
+        id_key: name of shapefile column/feature dictionary key providing the feature indices 
+        wpid is a reliable autogenerated index provided while making the crop mask
+        (note: also handy for joining tables and the crop mask shape/other shapes back later) 
+        raster_path_list: list of paths to rasters to analyse also accepts and loops 
+        through vrts inside the list
+        field_stats: list of statistics to carry out, also used in the column names 
+        out_dict: if True exports a dict instead of a dataframe
+        waterpip_files: if True assumes a standardised waterpip file path has been provided for 
+        the input name and deconstructs it to provide an automatic column name
+
+    Return:        
+        dict/dataframe: dictionary or dataframe of calculated stats, with the key being the field id
+    """
+    # check if column identifier exists in the shapefile
+    vector.check_column_exists(shapefile_path=input_shapefile_path, column=id_key)
+
+    # make sure the crs match
+    vector.compare_raster_vector_crs(
+        raster_path=raster_path_list[0],
+        shapefile_path=input_shapefile_path)
+
+    index_dict = raster.create_polygon_index_dict(
+        template_raster_path=raster_path_list[0],
+        input_shapefile_path=input_shapefile_path,
+        id_key=id_key,    
+    )
+
+    stats_df = equal_dimensions_zonal_stats(
+        polygon_index_base_raster_path=raster_path_list[0],
+        polygon_index_dict=index_dict,
+        raster_path_list=raster_path_list,
+        field_stats=field_stats,
+        out_dict=out_dict,
+        id_key=id_key,
+        waterpip_files=waterpip_files 
+    )
+
+    return stats_df
+
+##########################
+def equal_dimensions_zonal_stats(
+    polygon_index_dict: dict,
+    polygon_index_base_raster_path: str,
+    raster_path_list: list,
+    field_stats: list,
+    out_dict: bool=False,
+    id_key: str = 'wpid', 
+    waterpip_files: bool=False):
+    """
+    Description:
+        takes a dictionary made using create_polygon_index_dict
+        and an input_raster_path and calculates statistics per field
+        in the raster using the index to identify the cells within each field
+
+        NOTE: The bounds and resolution of the tif the polygon_index_dict
+        is based on and the raster being analysed needs to be the same. 
+        that is why you need to provide it so that it can be checked each time.
+
+    Args:
+        polygon_index_dict: dict providing the indices to analyse
+        polygon_index_base_raster_path: raster that formed the template for the polygon
+        index_dict
+        raster_path_list: list of paths to rasters to analyse also accepts and loops through vrts inside
+        the list
+        field_stats: list of statistics to carry out, also used in the column names 
+        out_dict: if True exports a dict instead of a dataframe
+        id_key: name of shapefile column/feature dictionary key providing the feature indices 
+        wpid is a reliable autogenerated index provided while making the crop mask
+        (note: also handy for joining tables and the crop mask shape/other shapes back later) 
+        waterpip_files: if True assumes a standardised waterpip file path has been provided for 
+        the input name and deconstructs it to provide an automatic column name
+
+    Return:
+        dict/dataframe: dictionary or dataframe of calculated stats, with the key being the field id
+
+    """
+    # setup output dict
+    try:
+        stats = {key: {id_key: key} for key in list(polygon_index_dict.keys())}
+    except KeyError:
+        raise KeyError('column key: {} not found in polygon_index_dict, incorrectly made check function for details on how to run it'.format(id_key))
+
+
+    for raster_path in raster_path_list:
+        if not raster.check_dimensions(
+            raster_path_a=polygon_index_base_raster_path,
+            raster_path_b=raster_path):
+            raise AttributeError('geotransform parameters of the index_base_raster: {} and raster: {} have to match'
+                ': \n check the overlay of your input shapefile and input rasters'.format(polygon_index_base_raster_path, raster_path))
+
+        raster_name = os.path.splitext(os.path.basename(raster_path))[0]
+
+        # if a vrt loop through the bands
+        if 'vrt' in os.path.splitext(raster_path)[1]:
+            for band in range(1, raster.gdal_info(raster_path)['band_count']):
+                band_name = raster.gdal_info(raster_path, band_num=band)['band_name']
+                array = raster.raster_to_array(raster_path, band_num=band)
+                for key, value in polygon_index_dict.items():
+                    for stat in field_stats:
+                        column_name, numpy_function = generate_zonal_stats_column_and_function(
+                            input_name=band_name,
+                            statistic=stat,
+                            waterpip_files=waterpip_files) 
+                        stats[key][column_name] = numpy_function(array[value])
+
+        else:
+            array = raster.raster_to_array(raster_path)
+            for key, value in polygon_index_dict.items():
+                for stat in field_stats:
+                    column_name, numpy_function = generate_zonal_stats_column_and_function(
+                        input_name=raster_name,
+                        statistic=stat,
+                        waterpip_files=waterpip_files) 
+                    stats[key][column_name] = numpy_function(array[value])
+
+    if not out_dict:
+        stats = dict_to_dataframe(in_dict=stats)
+
+    return stats
+
+##########################
+def single_raster_zonal_stats(
+    input_raster_path: str,
+    input_shapefile_path: str,
+    field_stats: list,
+    id_key: str='wpid',
+    out_dict: bool=False,
+    waterpip_files: bool=False):
+    """
+    Description:
+        carries out a zonal stats analysis and organises the results 
+        in a dictionary or dataframe according to the requirements 
+        
+    Args:
+        template_raster_path: path to the raster contianing the data being analysed
+        input_shapefile_path: shapefile to retrieve raster indices for per feature
+        id_key: name of shapefile column/feature dictionary key providing the feature indices 
+        wpid is a reliable autogenerated index provided while making the crop mask
+        (note: also handy for joining tables and the crop mask shape/other shapes back later) 
+        field_stats: list of statistics to carry out, also used in the column names 
+        out_dict: if True exports a dict instead of a dataframe
+        waterpip_files: if True assumes a standardised waterpip file path has been provided for 
+        the input name and deconstructs it to provide an automatic column name
+
+    Return:
+        dict\dataframe: dictionary ro dataframe of calculated stats, with the key being the field id
+    """
+    # check if column identifier exists in the shapefile
+    vector.check_column_exists(shapefile_path=input_shapefile_path, column=id_key)
+    #check that the crs match
+    vector.compare_raster_vector_crs(
+        raster_path=input_raster_path,
+        shapefile_path=input_shapefile_path)
+
+    # setup output dictionary
+    name = os.path.splitext(os.path.basename(input_raster_path))[0]
+    stats = {}
+
+    print('calculating all feature statistics...')
+
+    skipped_features = {}
+
+    with fiona.open(input_shapefile_path, 'r') as shp:
+        geoms = [feature['geometry'] for feature in shp]
+        indices = [feature['properties'][id_key] for feature in shp]
+        for geom, tid in zip(geoms, indices):
+            stats[tid] = {id_key: tid}
+            bbox = shape(geom).bounds
+
+            with rasterio.open(input_raster_path, 'r') as src:
+                raster_window = rasterio.windows.from_bounds(
+                    left = bbox[0],
+                    bottom = bbox[1],
+                    right=bbox[2],
+                    top=bbox[3], 
+                    transform=src.transform)
+
+                if any(value < 0 for value in [raster_window.col_off, raster_window.row_off]): 
+                    if raster_window.col_off < 0:
+                        skipped_features[tid] = (tid,'feature col offset is negative')
+                    if raster_window.row_off < 0:
+                        skipped_features[tid] = (tid,'feature row offset is negative')
+                    for stat in field_stats: 
+                        column_name, __ = generate_zonal_stats_column_and_function(
+                            input_name=name,
+                            statistic=stat,
+                            waterpip_files=waterpip_files) 
+                        stats[tid][column_name] = np.nan  
+                                
+                else:
+                    window_transform = rasterio.windows.transform(raster_window, src.transform)
+                    # set shape to minimum if smaller than 1
+                    if raster_window.width < 1:
+                        width = 1
+                    else: 
+                        width = int(round(raster_window.width))
+
+                    if raster_window.height < 1:
+                        height = 1
+                    else: 
+                        height = int(round(raster_window.height))
+
+                    col_offset = int(round(raster_window.col_off))
+                    row_offset = int(round(raster_window.row_off))
+
+                    window_shape = (height, width)
+
+                    window_array = src.read(1, window=rasterio.windows.Window(col_offset, row_offset, width, height))
+                    window_array = np.where(window_array == src.nodata, np.nan, window_array)
+                
+                    geom_array = features.rasterize(
+                        [(geom, 1)],
+                        out_shape=window_shape,
+                        transform=window_transform,
+                        all_touched=True,
+                        fill=0,
+                        dtype='uint8')
+
+                    if geom_array.shape != window_array.shape:
+                        raise AttributeError('rasterized polygon array calculated in single_raster_zonal_stats '
+                            'should be the same as the raster window array: \n check the overlay of your input shapefile and input raster')
+
+                    temp_array = np.where(geom_array == 1, window_array, np.nan)
+
+                    for stat in field_stats:
+                        column_name, numpy_function = generate_zonal_stats_column_and_function(
+                            input_name=name,
+                            statistic=stat,
+                            waterpip_files=waterpip_files) 
+                        stats[tid][column_name] = numpy_function(temp_array)
+    
+    if skipped_features:
+        print(skipped_features)
+    
+    if not out_dict:
+        stats = dict_to_dataframe(in_dict=stats)
+
+    return stats
+
+#################################
+def raster_count_statistics(
+    input_raster_path:str,
+    output_csv: str = None,
+    out_dict: bool=False,
+    categories_dict: dict = None,
+    category_name: str = 'landcover'
+    ):
+    """
+    Description:
+        count the occurrence of unique values in a raster
+        and various other statistics around it for the
+        the percentage of non nan cells that make up the raster
+
+        NOTE: categories_dict assumes that the dict keys are the categories 
+        and that the values are the values
+
+    Args:
+        input_raster_path: input raster to check
+        categories_dict: if a dict is provided uses the dic tto assign names/categories 
+        to the values found.
+        category_name: if a category dict is provided this is use dot name the new dict column made
+        out_dict: if true outputs as dict otherwise as a dataframe
+        output_csv: if the path to an output csv is provided then an csv and excel of the output is made
+
+    Return:
+        dataframe/dict: dict or dataframe of various statistics related to the counted raster values, path to the csv
+    """
+    counts_list = raster.count_raster_values(input_raster_path)
+
+    if categories_dict:
+        # reverse categories_dict
+        categories_dict_reversed = {categories_dict[key] : key for key in 
+            categories_dict.keys() if not isinstance(categories_dict[key],list)}
+        
+        # create counts dictionary
+        categories_list = []
+        for count_dict in counts_list:
+            count_dict[category_name] = categories_dict_reversed[count_dict['value']]                
+            categories_list.append(count_dict)
+
+        categories_stats = {_dict[category_name]: _dict for _dict in categories_list}
+    
+    else:
+        categories_stats = {_dict['value']: _dict for _dict in counts_list}
+
+    if not out_dict:
+        categories_stats = dict_to_dataframe(in_dict=categories_list)
+
+    if output_csv:
+        output_table(
+            table=categories_stats,
+            output_file_path=output_csv)
+
+    return categories_stats, output_csv 
+
+########################################################
+# raster/Array statistics Functions
 ########################################################
 def calc_dual_array_statistics(
     a: Union[str, np.ndarray],
@@ -483,236 +946,24 @@ def mostcommonzaxis(array_stack, **kwargs):
 
     return output_array
 
-##########################
-def multiple_raster_zonal_stats(
-    template_raster_path: str,
-    input_shapefile_path: str,    
-    raster_path_list: list,
-    analyses: list,
-    out_dict: bool=False,
-    id_key: str = 'wpid',    
-    **kwargs): 
-    """
-    Description:
-        rasterize the features in the shapefile according to the
-        template raster provided and extract the indices corresponding 
-        to each feature
-
-        uses the dictionary made and the input_raster_path and calculates statistics per field
-        in the raster using the index to identify the cells within each field
-
-    Args:
-        template_raster_path: path to the raster contianing the metadata needed
-        input_shapefile_path: shapefile to retireve raster indices for per feature
-        id_key: name of shapefile column/feature dictionary key providing the feature indices 
-        wpid is a reliable autogenerated index provided while making the crop mask
-        (note: also handy for joining tables and the crop mask shape/other shapes back later) 
-        raster_path_list: list of paths to rasters to analyse also accepts and loops 
-        through vrts inside the list
-        analyses: list of tuples containing statistic to calculate [0] and 
-        numpy function that matches it [1]
-        out_dict: if True exports a dict instead of a dataframe
-
-    Return:        
-        dict/dataframe: dictionary or dataframe of calculated stats, with the key being the field id
-    """
-    index_dict = raster.create_polygon_index_dict(
-        template_raster_path=template_raster_path,
-        input_shapefile_path=input_shapefile_path,
-        id_key=id_key,    
-    )
-
-    stats_df = equal_dimensions_zonal_stats(
-        polygon_index_base_raster_path=template_raster_path,
-        polygon_index_dict=index_dict,
-        raster_path_list=raster_path_list,
-        analyses=analyses,
-        out_dict=out_dict
-    )
-
-    return stats_df
-
-##########################
-def equal_dimensions_zonal_stats(
-    polygon_index_dict: dict,
-    polygon_index_base_raster_path: str,
-    raster_path_list: list,
-    analyses: list,
-    out_dict: bool=False,
-    **kwargs):
-    """
-    Description:
-        takes a dictionary made using create_polygon_index_dict
-        and an input_raster_path and calculates statistics per field
-        in the raster using the index to identify the cells within each field
-
-        NOTE: The bounds and resolution of the tif the polygon_index_dict
-        is based on and the raster being analysed needs to be the same. 
-        that is why you need to provide it so that it can be checked each time.
-
-    Args:
-        polygon_index_dict: dict providing the indices to analyse
-        polygon_index_base_raster_path: raster that formed the template for the polygon
-        index_dict
-        raster_path_list: list of paths to rasters to analyse also accepts and loops through vrts inside
-        the list
-        analyses: list of tuples containing statistic to calculate [0] and 
-        numpy function thatbmatches it [1]
-        out_dict: if True exports a dict instead of a dataframe
-
-    Return:
-        dict/dataframe: dictionary or dataframe of calculated stats, with the key being the field id
-
-    """
-    stats = {key: {} for key in list(polygon_index_dict.keys())}
-
-
-    for raster_path in raster_path_list:
-        if not raster.check_dimensions(
-            raster_path_a=polygon_index_base_raster_path,
-            raster_path_b=raster_path):
-            raise AttributeError('geotransform parameters of the index_base_raster: {} and raster: {} have to match'.format(polygon_index_base_raster_path, raster_path))
-
-        raster_name = os.path.splitext(os.path.basename(raster_path))[0]
-
-        # if a vrt loop through the bands
-        if 'vrt' in os.path.splitext(raster_path)[1]:
-            for band in range(1, raster.gdal_info(raster_path)['band_count']):
-                band_name = raster.gdal_info(raster_path, band_num=band)['band_name']
-                array = raster.raster_to_array(raster_path, band_num=band)
-                for key, value in polygon_index_dict.items():
-                    for statistic in analyses:
-                        band_specific_statistic_key = band_name + '_' + statistic[0]
-                        stats[key][band_specific_statistic_key] = statistic[1](array[value], **kwargs)
-
-        else:
-            array = raster.raster_to_array(raster_path)
-            for key, value in polygon_index_dict.items():
-                for statistic in analyses:
-                    raster_specific_statistic_key = raster_name + '_' + statistic[0]
-                    stats[key][raster_specific_statistic_key] = statistic[1](array[value], **kwargs)
-
-    if not out_dict:
-        stats = dict_to_dataframe(in_dict=stats)
-
-    return stats
-
-##########################
-def single_raster_zonal_stats(
-    input_raster_path: str,
-    input_shapefile_path: str,
-    analyses: list,
-    id_key: str='wpid',
-    out_dict: bool=False):
-    """
-    Description:
-        carries out a zonal stats analysis and organises the results 
-        in a dictionary or dataframe according to the requirements 
-        
-    Args:
-        template_raster_path: path to the raster contianing the data being analysed
-        input_shapefile_path: shapefile to retrieve raster indices for per feature
-        id_key: name of shapefile column/feature dictionary key providing the feature indices 
-        wpid is a reliable autogenerated index provided while making the crop mask
-        (note: also handy for joining tables and the crop mask shape/other shapes back later) 
-        analyses: list of tuples containing statistic to calculate [0] and 
-        numpy function thatbmatches it [1]
-        out_dict: if True exports a dict instead of a dataframe
-
-    Return:
-        dict\dataframe: dictionary ro dataframe of calculated stats, with the key being the field id
-    """
-    # setup output dictionary
-    name = os.path.splitext(os.path.basename(input_raster_path))[0]
-    stats = {}
-
-    print('calculating all feature statistics...')
-
-    skipped_features = {}
-
-    with fiona.open(input_shapefile_path, 'r') as shp:
-        geoms = [feature['geometry'] for feature in shp]
-        indices = [feature['properties'][id_key] for feature in shp]
-        for geom, tid in zip(geoms, indices):
-            stats[tid] = {}
-            bbox = shape(geom).bounds
-
-            with rasterio.open(input_raster_path, 'r') as src:
-                raster_window = rasterio.windows.from_bounds(
-                    left = bbox[0],
-                    bottom = bbox[1],
-                    right=bbox[2],
-                    top=bbox[3], 
-                    transform=src.transform)
-
-                if any(value < 0 for value in [raster_window.col_off, raster_window.row_off]): 
-                    if raster_window.col_off < 0:
-                        skipped_features[tid] = (tid,'feature col offset is negative')
-                    if raster_window.row_off < 0:
-                        skipped_features[tid] = (tid,'feature row offset is negative')
-                    for statistic in analyses:
-                        statistic_name = name + '_' + statistic[0]
-                        stats[tid][statistic_name] = np.nan             
-                else:
-                    window_transform = rasterio.windows.transform(raster_window, src.transform)
-                    # set shape to minimum if smaller than 1
-                    if raster_window.width < 1:
-                        width = 1
-                    else: 
-                        width = int(round(raster_window.width))
-
-                    if raster_window.height < 1:
-                        height = 1
-                    else: 
-                        height = int(round(raster_window.height))
-
-                    col_offset = int(round(raster_window.col_off))
-                    row_offset = int(round(raster_window.row_off))
-
-                    window_shape = (height, width)
-
-                    window_array = src.read(1, window=rasterio.windows.Window(col_offset, row_offset, width, height))
-                    window_array = np.where(window_array == src.nodata, np.nan, window_array)
-                
-                    geom_array = features.rasterize(
-                        [(geom, 1)],
-                        out_shape=window_shape,
-                        transform=window_transform,
-                        all_touched=True,
-                        fill=0,
-                        dtype='uint8')
-
-                    if geom_array.shape != window_array.shape:
-                        raise AttributeError('rasterized array in calc single raster zonal stats should be the same as the window array')
-
-                    temp_array = np.where(geom_array == 1, window_array, np.nan)
-
-                    for statistic in analyses:
-                        statistic_name = name + '_' + statistic[0]
-                        stats[tid][statistic_name] = statistic[1](temp_array)
-    
-    if skipped_features:
-        print(skipped_features)
-    
-    if not out_dict:
-        stats = dict_to_dataframe(in_dict=stats)
-
-    return stats
-
 
 if __name__ == "__main__":
     start = default_timer()
     args = sys.argv
     
     try:
-        stats = single_raster_zonal_stats(
-            input_raster_path=r"C:\Users\roeland\workspace\projects\waterpip\waterpip_dir\cotton_test\L3\04_results\L3_cotton_bf_20200305_20201006.tif",
-            input_shapefile_path=r"C:\Users\roeland\workspace\projects\waterpip\testing\static\Selected4Analysis.shp",
-            id_key='wpid',
-            analyses=[('mean',np.nanmean), ('sum', np.nansum)],
-            out_dict=False)
+        categories_dict = wapor_lcc(3)
 
-        print(stats)
+        count_data, count_csv = raster_count_statistics(
+            input_raster_path=r"C:\Users\roeland\workspace\projects\waterpip\testing\mali_test\L3\03_masked\nomask\L3_LCC_20200101_20200111.tif",
+            output_csv=r"C:\Users\roeland\workspace\projects\waterpip\testing\mali_test\L3\03_masked\nomask\L3_LCC_20200101_20200111.csv",
+            categories_dict=categories_dict,
+            category_name= 'landcover',
+            out_dict=False
+            )
+
+        print(count_data)
+
     finally:
         end = default_timer()
         print('process duration: {}'.format(timedelta(seconds=round(end - start, 2))))

@@ -15,16 +15,12 @@ from datetime import datetime, timedelta
 from timeit import default_timer
 
 from typing import Union
-#from numpy.core.defchararray import index
 
-# from rasterstats import zonal_stats
-
-from waterpip.scripts.support import raster, statistics, vector
-from waterpip.scripts.structure.wapor_structure import WaporStructure
+from waterpip.scripts.support import raster, statistics
 from waterpip.scripts.retrieval.wapor_retrieval import WaporRetrieval
 
 ##########################
-class WaporAnalysis(WaporStructure):
+class WaporAnalysis(WaporRetrieval):
     """
     Description:
         Given rasters and a shapefile calculates standardised statistics
@@ -32,13 +28,17 @@ class WaporAnalysis(WaporStructure):
         given in WaporStructure
 
     Args:
+        wapor_directory: directory to output downloaded and processed data too
+        shapefile_path: path to the shapefile to clip downloaded data too if given 
+        wapor_level: wapor wapor_level integer to download data for either 1,2, or 3
+        api_token: api token to use when downloading data 
+        project_name: name of the location to store the retrieved data  
         period_start: datetime object specifying the start of the period 
         period_end: datetime object specifying the end of the period 
-        wapor_directory: directory to output downloaded and processed data too
-        project_name: name of the location to store the retrieved data  
-        shapefile_path: path to the shapefile to clip downloaded data too if given
-        wapor_level: wapor wapor_level integer to download data for either 1,2, or 3
         return_period: return period code of the component to be donwloaded (D (Dekadal) etc.)
+        silent: boolean, if True the more general messages in the class are not printed 
+        (autoset to False)       
+        )
 
     return: 
         Statisitics calculated on the basis of the WAPOR rasters retrieved stored in
@@ -48,12 +48,13 @@ class WaporAnalysis(WaporStructure):
         self,
         waterpip_directory: str,
         shapefile_path: str,
+        api_token: str,
         wapor_level: int,
         project_name: int = 'test',
         period_start: datetime = datetime.now() - timedelta(days=1),
         period_end: datetime = datetime.now(),
         return_period: str = 'D',
-        api_token: str = None,
+        silent: bool = False
     ):
         self.waterpip_directory = waterpip_directory
         self.project_name = project_name
@@ -63,214 +64,17 @@ class WaporAnalysis(WaporStructure):
         self.period_end = period_end
         self.return_period = return_period
         self.api_token = api_token
+        self.silent = silent
 
-        WaporStructure.__init__(self,
-            return_period=self.return_period,
+        super().__init__(
             waterpip_directory=self.waterpip_directory,
             project_name=self.project_name,
-            period_end=self.period_end,
-            period_start=self.period_start,
-            wapor_level=self.wapor_level
-        )
-
-    ########################################################
-    # Main Vector functions
-    ########################################################
-    """
-    def calculate_rasterstats(
-        self,
-        input_raster_path: str, 
-        input_shapefile_path: str=None,
-        output_shapefile_name: str = None,
-        stats: list = ['min', 'max', 'mean', 'sum']):
-        #""#"
-        Description:
-            quickly calculates statistics for the specified shapefile
-            and raster given and for each band in that raster if 
-            applicable and stores them in a copy of the shapefile stored 
-            in the analysis folders.
-        
-        Args:
-            input_raster_path: raster to analysis
-            input_shapefile_path: shapefile providing the analysis zones
-            (uses self.shapefile_path if not provided)
-            output_shapefile_name: name of the output shapefile. The path is autoset.
-            if no name is provided this is set to input name plus *_analysis*
-            stats: stats to calculate, accepts the following
-            in list format
-
-            ['min', 'max', 'mean', 'count', 'sum', 'std', 'median', 'majority', 'minority',
-            'unique', 'range', 'percentile']
-
-            NOTE: Note that certain statistics (majority, minority, 
-            and unique) require significantly more processing due 
-            to expensive counting of unique occurences for each pixel value.
-  
-        Return:
-            str: path to the new/updated analysis shapefile
-        #"#""
-        all_statistics = ['min', 'max', 'mean', 
-        'count', 'sum', 'std', 'median', 'majority', 
-        'minority', 'unique', 'range', 'percentile'] 
-
-        if not all(stat in all_statistics for stat in stats):
-            raise AttributeError('all stats given must exist in: {}'.format(all_statistics))
-        
-        print('calculating basic zonal field statistics ...')
-        
-        if not input_shapefile_path:
-            input_shapefile_path = self.shapefile_path
-
-        if not output_shapefile_name:
-            output_shapefile_path = os.path.join(
-                self.project['results'],
-                '{}_basic_stats.shp'.format(os.path.splitext(os.path.basename(input_shapefile_path))[0]))
-        else:
-             output_shapefile_path = os.path.join(
-                self.project['results'],output_shapefile_name)
-
-        #retrieve shapefile
-        records = vector.file_to_records(input_shapefile_path)
-
-        # add in a filter later
-
-        # add in a categorical analysis later
-
-        #run zonalstats through bands
-        num_rasters = raster.gdal_info(input_raster_path)['band_count']
-
-        band_stats = []
-        for num in range(1, num_rasters+1):
-            stats = zonal_stats(
-                input_shapefile_path, 
-                input_raster_path,
-                band_num=num,
-                stats=stats)
-
-            band_name = raster.gdal_info(input_raster_path, band_num=num)['band_name']
-
-            band_stats.append((band_name,stats))
-
-        for band_name, stats in band_stats:
-            band_name = band_name.split('_')[1] + band_name.split('_')[2]
-            for stat in stats:
-                records['{}_{}'.format(band_name,stat)] = [geom_stat[stat] for geom_stat in stats]
-
-        for stat in stats:
-            columns = [col for col in records.columns if stat in col]
-            records['mean_{}'.format(stat)] = records[columns].mean(axis=1)
-
-        records.to_file(output_shapefile_path)
-
-        print('calculated basic zonal field statistics')
-
-        return output_shapefile_path
-    """
-    ##########################
-    def calc_field_statistics(
-        self, 
-        fields_shapefile_path: str,
-        input_rasters: list,
-        template_raster_path: str,
-        crop: str='crop',
-        field_stats: list=['min', 'max', 'mean', 'sum', 'stddev'],
-        id_key: str='wpid',
-        analysis_name: str = None,
-        out_dict: bool=False,
-        period_start: datetime=None,
-        period_end: datetime=None,
-        **kwargs):
-        """
-        Description:
-            calculate a potential raster by selecting the 95% percentile 
-            value within the input raster and assigning it to 
-            all cells. Requires a mask to identify which cells to include in the analysis
-
-        Args:
-            self: (see class for details)
-            fields_shapefile_path: path to the shapefile defining the fields
-            percentile: percentile to choose as the potential value
-            template_raster_path: template raster path to which the field indices are mapped
-            must match dimensions of all input rasters
-            crop: crop being analysed used in the name
-            field_stats: list of statistics to carry out, also used in the column names 
-            id_key: name of shapefile column/feature dictionary key providing the feature indices 
-            wpid is a reliable autogenerated index provided while making the crop mask
-            (note: also handy for joining tables and the crop mask shape/other shapes back later) 
-            out_dict: if true outputs a dictionary instead of a shapefile and does not
-            write to csv.
-            analysis_name: name of analysis carried out is included in the csv output file name, if not provided
-            is auto generated
-            period_start: start of the season in datetime
-            period_end: end of the season in datetime
-        s
-        Return:
-            tuple: dataframe/dict made , path to the output csv
-        """
-        numpy_dict = {'sum': np.nansum, 'mean': np.nanmean, 'count': np.count, 'stddev': np.nanstd, 
-        'min': np.nanmin, 'max': np.nanmax, 'mdeian': np.nanmedian, 
-        'percentile': np.nanpercentile, 'variance': np.nanvar, 'quantile': np.nanquantile, 
-        'cumsum': np.nancumsum, 'product': np.nanprod,'cumproduct': np.nancumprod }
-
-        available_analysis = numpy_dict.keys()
-
-        if not all(stat in available_analysis for stat in field_stats):
-            raise KeyError('one of the analysis provided is not avaialble must be exist in: {}'.format(available_analysis))
-        else:
-            if not analysis_name:
-                analysis_name = field_stats.join('')
-
-            analyses = [(stat, numpy_dict[stat]) for stat in field_stats]
-
-        if not period_start:
-            period_start=self.period_start
-        if not period_end:
-            period_end = self.period_end
-
-        multiple_rasters = False
-
-        # create standardised csv file name
-        period_start_str = period_start.strftime('%Y%m%d')
-        period_end_str = period_end.strftime('%Y%m%d')
-
-        csv_filename = 'L{}_{}_{}_{}_{}.csv'.format(
-            self.wapor_level, crop, analysis_name, period_start_str,period_end_str)
-
-        csv_file_path = os.path.join(self.project['results'], csv_filename)
-
-        if any('vrt' in os.path.splitext(raster)[1] for raster in input_rasters):
-            multiple_rasters = True
-
-        if len(input_rasters) > 1:
-            multiple_rasters = True
-
-        if multiple_rasters:
-            print('attempting to calculate zonal stats for multiple rasters')
-            stats = statistics.multiple_raster_zonal_stats(
-                template_raster_path=template_raster_path,
-                input_shapefile_path=fields_shapefile_path,
-                raster_path_list=input_rasters,
-                analyses=analyses,
-                out_dict=out_dict,
-                index=id_key,
-                **kwargs,
-                )
-        else:
-            print('attempting to claculate zonal stats for a single raster')
-            stats = statistics.single_raster_zonal_stats(
-                input_shapefile_path=fields_shapefile_path,
-                input_raster_path=input_rasters[0],
-                analyses=analyses,
-                out_dict=out_dict,
-                id_key=id_key
-                )
-
-        if not out_dict:
-            stats.to_csv(csv_file_path, sep = ';')
-        else:
-            csv_file_path = None
-
-        return stats, csv_file_path
+            shapefile_path=self.shapefile_path,
+            wapor_level=self.wapor_level,
+            return_period=self.return_period,
+            api_token=self.api_token,
+            silent=self.silent,
+            )
 
     ########################################################
     # Sub Raster functions
@@ -279,10 +83,9 @@ class WaporAnalysis(WaporStructure):
         self, 
         datacomponent: str,
         numpy_function: FunctionType,
-        crop_mask_path: str,
-        crop: str,
+        mask_raster_path: str,
+        mask_folder: str,
         statistic: str, 
-        api_token: str=None,
         retrieval_list: dict=None,       
         period_start: datetime=None,
         period_end: datetime=None,
@@ -300,7 +103,6 @@ class WaporAnalysis(WaporStructure):
 
         Args:
             self: (see class for details)
-            api_token: token used to retrieve the data
             period_start: start of the season in datetime
             period_end: end of the season in datetime
             return_period: return period to retrieve data for, 
@@ -310,8 +112,8 @@ class WaporAnalysis(WaporStructure):
             set of rasters retrieved
             statistic: statistics being calculated used in the  output name, 
             should be related to the numpy funciton being used
-            crop: crop being analysed used in the name
-            crop_mask_path: path to the crop mask defining the area for analysis
+            mask_folder: name to use for the mask folder auto set to nomask if not provided
+            mask_raster_path: path to the crop mask defining the area for analysis
             output_nodata: nodata value to use on output
             retrieval_list: if you provide a retrieval list produced by 
             retrieve_wapor_download_info you can skip the preceding steps.
@@ -325,68 +127,59 @@ class WaporAnalysis(WaporStructure):
             period_end = self.period_end
         if not return_period:
             return_period = self.return_period
-        if not api_token:
-            api_token = self.api_token
-
-        crop = crop.lower().replace(' ', '_')
 
         if not retrieval_list:
-            # create standardised file name
-            period_start_str = period_start.strftime('%Y%m%d')
-            period_end_str = period_end.strftime('%Y%m%d')
-
-            output_filename = 'L{}_{}_{}_{}_{}_{}.tif'.format(
-                self.wapor_level, crop, datacomponent, statistic, period_start_str, period_end_str)
-
-            output_raster_path = os.path.join(self.project['analysis'], output_filename)
+            output_raster_path =self.structure.generate_output_file_path(
+                description='{}-{}'.format(datacomponent, statistic),
+                period_start=period_start,
+                period_end=period_end,
+                output_folder='analysis',
+                mask_folder=mask_folder,
+                ext='.tif'   
+            )
 
         else:
             # create standardised file name from retrieval list                
-            period_start_str = sorted([d['period_start'] for d in retrieval_list])[0].strftime("%Y%m%d")
-            period_end_str = sorted([d['period_end'] for d in retrieval_list])[-1].strftime("%Y%m%d")
+            period_start = sorted([d['period_start'] for d in retrieval_list])[0]
+            period_end = sorted([d['period_end'] for d in retrieval_list])[-1]
 
-            output_filename = 'L{}_{}_{}_{}_{}_{}.tif'.format(
-                self.wapor_level, crop, datacomponent, statistic, period_start_str,period_end_str)
-
-            output_raster_path = os.path.join(self.project['analysis'], output_filename)
-
-        if not os.path.exists(output_raster_path):
-            # set up the retrieval class
-            retrieve = WaporRetrieval(
-            waterpip_directory=self.waterpip_directory,
-            project_name=self.project_name,
-            shapefile_path=self.shapefile_path,
-            wapor_level=self.wapor_level,
-            return_period=return_period,
-            api_token=api_token,
-            silent=True,
+            output_raster_path = self.structure.generate_output_file_path(
+                description='{}_{}'.format(datacomponent, statistic),
+                period_start=period_start,
+                period_end=period_end,
+                output_folder='analysis',
+                mask_folder=mask_folder,
+                ext='.tif'   
             )
 
+        if not os.path.exists(output_raster_path):
             if not retrieval_list:
-                print('retrieving {} data between {} and {} for the crop: {}'.format(
-                    datacomponent, period_start_str, period_end_str, crop))
+                print('retrieving {} data between {} and {} for masked data: {}'.format(
+                    datacomponent, period_start, period_end, mask_folder))
 
                 # retrieve the download info
-                retrieval_info = retrieve.retrieve_wapor_download_info(
+                retrieval_info = self.retrieve_wapor_download_info(
                     period_start=period_start,
                     period_end=period_end,
-                    datacomponents=[datacomponent])
+                    return_period=return_period,
+                    datacomponents=[datacomponent],
+                    mask_folder=mask_folder)
 
             else:           
                 retrieval_info = retrieval_list
             
             # download the rasters
-            retrieved_data = retrieve.retrieve_wapor_rasters(
-                wapor_list=retrieval_info,
-                template_raster_path=crop_mask_path,
-                mask_to_template=True)
+            retrieved_data = self.retrieve_wapor_rasters(
+                wapor_download_list=retrieval_info,
+                template_raster_path=mask_raster_path,
+                mask_folder=mask_folder)
 
             # calculate the aggregate raster using the specified numpy statistical function
             if len(retrieved_data[datacomponent]['raster_list']) > 1:
                 statistics.calc_multiple_array_numpy_statistic(
                     input=retrieved_data[datacomponent]['vrt_path'],
                     numpy_function=numpy_function,
-                    template_raster_path=crop_mask_path,
+                    template_raster_path=mask_raster_path,
                     output_raster_path=output_raster_path,
                     axis=0,
                     output_nodata=output_nodata,
@@ -406,7 +199,7 @@ class WaporAnalysis(WaporStructure):
         self, 
         input_raster_path: str,
         percentile: int,
-        crop_mask_path: str,
+        mask_raster_path: str,
         output_nodata:float=-9999):
         """
         Description:
@@ -418,16 +211,26 @@ class WaporAnalysis(WaporStructure):
             self: (see class for details)
             evapotranspiration_raster_path: path to the evapotranspiration raster
             percentile: percentile to choose as the potential value
-            crop_mask_path: path to the crop mask to use in 
-            defining the area for analysis if provided
-            crop: crop being analysed used in the name
+            mask_raster_path: path to the raster mask defining the area for analysis if provided
+            mask_folder: name to use for the mask folder auto set to nomask if not provided
             output_nodata: nodata value to use on output
         
         Return:
             str: path to the potential raster
         """
     	# create standardised filename
-        potential_raster_path = os.path.splitext(input_raster_path)[0] + '_pot.tif'
+        file_parts = self.structure.deconstruct_output_file_path(
+            output_file_path=input_raster_path
+        )
+
+        potential_raster_path = self.structure.generate_output_file_path(
+            description='{}-pot'.format(file_parts['description']),
+            period_start=file_parts['period_start'],
+            period_end=file_parts['period_end'],
+            output_folder='analysis',
+            mask_folder=file_parts['mask_folder'],
+            ext='.tif'
+        )
 
         if not os.path.exists(potential_raster_path):
             # calculate the potet for the given date 
@@ -435,7 +238,7 @@ class WaporAnalysis(WaporStructure):
                 input=input_raster_path,
                 numpy_function=np.nanpercentile,
                 output_raster_path=potential_raster_path,
-                template_raster_path=crop_mask_path,
+                template_raster_path=mask_raster_path,
                 output_nodata=output_nodata,
                 q=percentile,
                 mask_to_template=True)
@@ -454,9 +257,8 @@ class WaporAnalysis(WaporStructure):
     ########################################################
     def calc_relative_evapotranspiration(
         self, 
-        crop_mask_path: str,
-        crop: str,  
-        api_token: str=None,   
+        mask_raster_path: str,
+        mask_folder: str,   
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = None,
@@ -476,23 +278,22 @@ class WaporAnalysis(WaporStructure):
 
         Args:
             self: (see class for details)
-            api_token: token used to retrieve the data 
             period_start: start of the season in datetime
             period_end: end of the season in datetime
             return_period: return period to retrieve data for, 
             auto set to monthly
-            crop_mask_path: path to the crop mask defining the area for analysis
-            crop: crop being analysed used in the name
+            mask_raster_path: path to the raster mask defining the area for analysis if provided
+            mask_folder: name to use for the mask folder auto set to nomask if not provided
             percentile: percentile of evapotranspiration values to choose as the 
             potential evapotranspiration value
             output_nodata: nodata value to use on output
-            fields_shapefile_path: if the path to the fields shapefile_path is provided
+            fields_shapefile_path: if the path to the fields shapefile path is provided
             then the field level statistics are also calculated
             field_stats: list of statistics to carry out during the field level analysis, 
             also used in the column names  
             id_key: name of shapefile column/feature dictionary key providing the feature indices 
-            wpid is a reliable autogenerated index provided while making the crop mask
-            (note: also handy for joining tables and the crop mask shape/other shapes back later) 
+            wpid is a reliable autogenerated index provided while making the mask
+            (note: also handy for joining tables and the mask shape/other shapes back later) 
             out_dict: if true outputs a dictionary instead of a shapefile and does not
             write to csv.
 
@@ -505,28 +306,26 @@ class WaporAnalysis(WaporStructure):
             period_end = self.period_end
         if not return_period:
             return_period = self.return_period
-        if not api_token:
-            api_token = self.api_token
 
         # create standardised relative evapotranspiration file name
-        period_start_str = period_start.strftime('%Y%m%d')
-        period_end_str = period_end.strftime('%Y%m%d')
-
-        relative_evapotranspiration_filename = 'L{}_{}_ret_{}_{}.tif'.format(
-            self.wapor_level, crop, period_start_str,period_end_str)
-
-        relative_evapotranspiration_raster_path = os.path.join(self.project['results'], relative_evapotranspiration_filename)
-
+        relative_evapotranspiration_raster_path = self.structure.generate_output_file_path(
+            description='ret',
+            period_start=period_start,
+            period_end=period_end,
+            output_folder='results',
+            mask_folder=mask_folder,
+            ext='.tif',
+        )
+       
         if not os.path.exists(relative_evapotranspiration_raster_path):
             # retrieve and calculate sum of evapotranspiration for the given period
             evapotranspiration = self.retrieve_and_analyse_period_of_wapor_rasters(
-                    api_token=api_token,
                     period_start=period_start,
                     period_end=period_end,
                     datacomponent= 'AETI',
                     numpy_function=np.nansum,
-                    crop_mask_path=crop_mask_path,
-                    crop=crop,
+                    mask_raster_path=mask_raster_path,
+                    mask_folder=mask_folder,
                     statistic='sum',
                     return_period=return_period,
                     output_nodata=output_nodata)  
@@ -535,7 +334,7 @@ class WaporAnalysis(WaporStructure):
             potential_evapotranspiration = self.calc_potential_raster(
                 input_raster_path=evapotranspiration,
                 percentile=percentile,
-                crop_mask_path=crop_mask_path,
+                mask_raster_path=mask_raster_path,
                 output_nodata=output_nodata)
 
             # calculate relative evapotranspiration for the given period (AETI/POTET)
@@ -544,7 +343,7 @@ class WaporAnalysis(WaporStructure):
                 b=potential_evapotranspiration,
                 calc_function=statistics.ceiling_divide,
                 output_raster_path=relative_evapotranspiration_raster_path,
-                template_raster_path=crop_mask_path,
+                template_raster_path=mask_raster_path,
                 output_nodata=output_nodata,
                 mask_to_template=True)
 
@@ -556,17 +355,23 @@ class WaporAnalysis(WaporStructure):
         if fields_shapefile_path:
             print('Calculating ret field statistics...')
 
-            ret_field_stats = self.calc_field_statistics(
+            ret_csv_filepath = self.structure.generate_output_file_path(
+                description='ret',
+                period_start=period_start,
+                period_end=period_end,
+                output_folder='results',
+                mask_folder=mask_folder,
+                ext='.csv',
+            )
+            
+            ret_field_stats = statistics.calc_field_statistics(
                 fields_shapefile_path=fields_shapefile_path,
                 input_rasters=[relative_evapotranspiration_raster_path],
-                template_raster_path=crop_mask_path,
-                crop=crop,
+                output_csv_path=ret_csv_filepath,
                 field_stats=field_stats,
-                analysis_name='ret',
                 id_key=id_key,
-                period_start= period_start,
-                period_end=period_end,
-                out_dict=out_dict)
+                out_dict=out_dict,
+                waterpip_files=True)
 
             print('Relative evapotranspiration field statistics calculated: ret (Adequacy PAI)')
 
@@ -578,9 +383,8 @@ class WaporAnalysis(WaporStructure):
     ########################################################
     def calc_temporal_variation_of_relative_evapotranspiration(
         self, 
-        crop_mask_path: str,
-        crop: str,
-        api_token: str=None,     
+        mask_raster_path: str,
+        mask_folder: str,    
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = 'D',
@@ -601,14 +405,13 @@ class WaporAnalysis(WaporStructure):
             tret = mean ret
 
         Args:
-            self: (see class for details)
-            api_token: token used to retrieve the data 
+            self: (see class for details) 
             period_start: start of the season in datetime
             period_end: end of the season in datetime
             return_period: return period to retrieve data for
             autoset to dekad
-            crop_mask_path: path to the crop mask defining the area for analysis
-            crop: crop being analysed used in the name
+            mask_raster_path: path to the raster mask defining the area for analysis if provided
+            mask_folder: name to use for the mask folder auto set to nomask if not provided
             percentile: percentile of evapotranspiration values to choose as the 
             potential evapotranspiration value
             output_nodata: nodata value to use on output
@@ -629,64 +432,55 @@ class WaporAnalysis(WaporStructure):
             period_start=self.period_start
         if not period_end:
             period_end = self.period_end
-        if not api_token:
-            api_token = self.api_token
 
         # create standardised temporal relative evapotranspiration file name
-        period_start_str = period_start.strftime('%Y%m%d')
-        period_end_str = period_end.strftime('%Y%m%d')
+        temporal_relative_evapotranspiration_raster_path = self.structure.generate_output_file_path(
+            description='tret',
+            period_start=period_start,
+            period_end=period_end,
+            output_folder='results',
+            mask_folder=mask_folder,
+            ext='.tif',
+        )
 
-        temporal_relative_evapotranspiration_raster_path = os.path.join(self.project['results'],'L{}_{}_tret_{}_{}.tif'.format(
-            self.wapor_level, crop, period_start_str,period_end_str))
-
-        temporal_relative_evapotranspiration_vrt_path = os.path.join(self.project['results'], 'L{}_{}_tret_{}_{}.vrt'.format(
-            self.wapor_level, crop, period_start_str,period_end_str))
-
+        temporal_relative_evapotranspiration_vrt_path = self.structure.generate_output_file_path(
+            description='tret',
+            period_start=period_start,
+            period_end=period_end,
+            output_folder='results',
+            mask_folder=mask_folder,
+            ext='.vrt',
+        )
+      
         if not any(os.path.exists(file) for file in [temporal_relative_evapotranspiration_raster_path, temporal_relative_evapotranspiration_vrt_path]):
-            
             # retrieve all available dekadal data for the period
 
-            # set up the retrieval class
-            retrieve = WaporRetrieval(
-                waterpip_directory=self.waterpip_directory,
-                project_name=self.project_name,
-                shapefile_path=self.shapefile_path,
-                wapor_level=self.wapor_level,
-                return_period=return_period,
-                api_token=api_token,
-                silent=True,
-                )
-
             # retrieve the download info
-            retrieval_info = retrieve.retrieve_wapor_download_info(
+            retrieval_info = self.retrieve_wapor_download_info(
                 period_start=period_start,
                 period_end=period_end,
                 datacomponents=['AETI'])
 
             print("calculating {} sets of relative evapotranspiration".format(len(retrieval_info)))
             output_rasters = []
-            
-            periodic_relative_evapotranspiration_raster_dir = os.path.join(self.project['results'],'tret_rasters_{}_{}_{}_{}_{}'.format(
-                self.wapor_level, crop, return_period, period_start_str, period_end_str))
-
-            if not os.path.exists(periodic_relative_evapotranspiration_raster_dir):
-                os.makedirs(periodic_relative_evapotranspiration_raster_dir)
 
             for retrieval_dict in retrieval_info:
-                # create standardised relative evapotranspiration file name
-                relative_evapotranspiration_filename = 'L{}_{}_ret_{}.tif'.format(
-                    self.wapor_level, crop, retrieval_dict['period_str'])
-
-                relative_evapotranspiration_raster_path = os.path.join(periodic_relative_evapotranspiration_raster_dir,
-                    relative_evapotranspiration_filename)
+                # create standardised relative evapotranspiration file name            
+                relative_evapotranspiration_raster_path = self.structure.generate_output_file_path(
+                    description='ret',
+                    period_start=retrieval_dict['period_start'],
+                    period_end=retrieval_dict['period_end'],
+                    output_folder='analysis',
+                    mask_folder=mask_folder,
+                    ext='.tif',
+                )
 
                 # retrieve and calculate sum of evapotranspiration for the given period
                 evapotranspiration = self.retrieve_and_analyse_period_of_wapor_rasters(
-                        api_token=api_token,
                         datacomponent= 'AETI',
                         numpy_function=np.nansum,
-                        crop_mask_path=crop_mask_path,
-                        crop=crop,
+                        mask_raster_path=mask_raster_path,
+                        mask_folder=mask_folder,
                         statistic='sum',
                         retrieval_list=[retrieval_dict],
                         return_period=return_period,
@@ -696,7 +490,7 @@ class WaporAnalysis(WaporStructure):
                 potential_evapotranspiration = self.calc_potential_raster(
                     input_raster_path=evapotranspiration,
                     percentile=percentile,
-                    crop_mask_path=crop_mask_path,
+                    mask_raster_path=mask_raster_path,
                     output_nodata=output_nodata)
 
                 # calculate relative evapotranspiration for the given period (AETI/POTET)
@@ -705,7 +499,7 @@ class WaporAnalysis(WaporStructure):
                     b=potential_evapotranspiration,
                     calc_function=statistics.ceiling_divide,
                     output_raster_path=relative_evapotranspiration_raster_path,
-                    template_raster_path=crop_mask_path,
+                    template_raster_path=mask_raster_path,
                     output_nodata=output_nodata,
                     mask_to_template=True)
 
@@ -720,7 +514,7 @@ class WaporAnalysis(WaporStructure):
             statistics.calc_multiple_array_numpy_statistic(
                         input=temporal_relative_evapotranspiration_vrt_path,
                         numpy_function=np.nanmean,
-                        template_raster_path=crop_mask_path,
+                        template_raster_path=mask_raster_path,
                         output_raster_path=temporal_relative_evapotranspiration_raster_path,
                         axis=0,
                         output_nodata=output_nodata,
@@ -736,17 +530,23 @@ class WaporAnalysis(WaporStructure):
         if fields_shapefile_path:
             print('Calculating tret field statistics...')
 
-            tret_field_stats = self.calc_field_statistics(
+            tret_csv_filepath = self.structure.generate_output_file_path(
+                description='tret',
+                period_start=period_start,
+                period_end=period_end,
+                output_folder='results',
+                mask_folder=mask_folder,
+                ext='.csv',
+            )
+
+            tret_field_stats = statistics.calc_field_statistics(
                 fields_shapefile_path=fields_shapefile_path,
                 input_rasters=[temporal_relative_evapotranspiration_vrt_path, temporal_relative_evapotranspiration_raster_path],
-                template_raster_path=crop_mask_path,
-                crop=crop,
+                output_csv_path=tret_csv_filepath,
                 field_stats=field_stats,
-                analysis_name='tret',
                 id_key=id_key,
-                period_start= period_start,
-                period_end=period_end,
-                out_dict=out_dict)
+                out_dict=out_dict,
+                waterpip_files=True)
 
             print('Temporal variation in relative evapotranspiration field statistics calculated: tret (Reliability PAI)')
         
@@ -758,9 +558,8 @@ class WaporAnalysis(WaporStructure):
     ##########################
     def calc_crop_water_deficit(
         self, 
-        crop_mask_path: str,
-        crop: str,        
-        api_token: str=None,
+        mask_raster_path: str,
+        mask_folder: str,     
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = None,
@@ -779,13 +578,12 @@ class WaporAnalysis(WaporStructure):
 
         Args:
             self: (see class for details)
-            api_token: token used to retrieve the data 
             period_start: start of the season in datetime
             period_end: end of the season in datetime
             return_period: return period to retrieve data for, 
             auto set to monthly
-            crop_mask_path: path to the crop mask defining the area for analysis
-            crop: crop being analysed used in the name
+            mask_raster_path: path to the raster mask defining the area for analysis if provided
+            mask_folder: name to use for the mask folder auto set to nomask if not provided
             percentile: percentile of evapotranspiration values to choose as the 
             potential evapotranspiration value
             output_nodata: nodata value to use on output
@@ -808,30 +606,26 @@ class WaporAnalysis(WaporStructure):
             period_end = self.period_end
         if not return_period:
             return_period = self.return_period
-        if not api_token:
-            api_token = self.api_token
-
-        crop = crop.lower().replace(' ', '_')
 
         # create standardised crop_water_deficit file name
-        period_start_str = period_start.strftime('%Y%m%d')
-        period_end_str = period_end.strftime('%Y%m%d')
-
-        crop_water_deficit_filename = 'L{}_{}_cwd_{}_{}.tif'.format(
-            self.wapor_level, crop, period_start_str,period_end_str)
-
-        crop_water_deficit_raster_path = os.path.join(self.project['results'], crop_water_deficit_filename)
-
+        crop_water_deficit_raster_path = self.structure.generate_output_file_path(
+            description='cwd',
+            period_start=period_start,
+            period_end=period_end,
+            output_folder='results',
+            mask_folder=mask_folder,
+            ext='.tif',
+            )
+        
         if not os.path.exists(crop_water_deficit_raster_path):
             # retrieve and calculate sum of evapotranspiration for the given period
             evapotranspiration = self.retrieve_and_analyse_period_of_wapor_rasters(
-                    api_token=api_token,
                     period_start=period_start,
                     period_end=period_end,
                     datacomponent= 'AETI',
                     numpy_function=np.nansum,
-                    crop_mask_path=crop_mask_path,
-                    crop=crop,
+                    mask_raster_path=mask_raster_path,
+                    mask_folder=mask_folder,
                     statistic='sum',
                     return_period=return_period,
                     output_nodata=output_nodata)  
@@ -840,7 +634,7 @@ class WaporAnalysis(WaporStructure):
             potential_evapotranspiration = self.calc_potential_raster(
                 input_raster_path=evapotranspiration,
                 percentile=percentile,
-                crop_mask_path=crop_mask_path,
+                mask_raster_path=mask_raster_path,
                 output_nodata=output_nodata)
 
             
@@ -850,7 +644,7 @@ class WaporAnalysis(WaporStructure):
                 b=evapotranspiration,
                 calc_function=statistics.floor_minus,
                 output_raster_path=crop_water_deficit_raster_path,
-                template_raster_path=crop_mask_path,
+                template_raster_path=mask_raster_path,
                 output_nodata=output_nodata,
                 mask_to_template=True)
             
@@ -861,18 +655,24 @@ class WaporAnalysis(WaporStructure):
 
         if fields_shapefile_path:
             print('Calculating cwd field statistics...')
+            
+            cwd_csv_filepath = self.structure.generate_output_file_path(
+                description='cwd',
+                period_start=period_start,
+                period_end=period_end,
+                output_folder='results',
+                mask_folder=mask_folder,
+                ext='.csv',
+            )
 
-            cwd_field_stats = self.calc_field_statistics(
+            cwd_field_stats = statistics.calc_field_statistics(
                 fields_shapefile_path=fields_shapefile_path,
                 input_rasters=[crop_water_deficit_raster_path],
-                template_raster_path=crop_mask_path,
-                crop=crop,
+                output_csv_path=cwd_csv_filepath,
                 field_stats=field_stats,
-                analysis_name='cwd',
                 id_key=id_key,
-                period_start= period_start,
-                period_end=period_end,
-                out_dict=out_dict)
+                out_dict=out_dict,
+                waterpip_files=True)
 
             print('Crop water deficit field statistics calculated: cwd (Adequacy PAI)')
         
@@ -884,9 +684,8 @@ class WaporAnalysis(WaporStructure):
     ##########################
     def calc_beneficial_fraction(
         self, 
-        crop_mask_path: str,
-        crop: str,
-        api_token: str=None,
+        mask_raster_path: str,
+        mask_folder: str,
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = None,
@@ -904,13 +703,12 @@ class WaporAnalysis(WaporStructure):
 
         Args:
             self: (see class for details)
-            api_token: token used to retrieve the data 
             period_start: start of the season in datetime
             period_end: end of the season in datetime
             return_period: return period to retrieve data for, 
             auto set to monthly
-            crop_mask_path: path to the crop mask defining the area for analysis
-            crop: crop being analysed used in the name
+            mask_raster_path: path to the raster mask defining the area for analysis if provided
+            mask_folder: name to use for the mask folder auto set to nomask if not provided
             output_nodata: nodata value to use on output
             fields_shapefile_path: if the path to the fields shapefile_path is provided
             then the field level statistics are also calculated           
@@ -931,54 +729,50 @@ class WaporAnalysis(WaporStructure):
             period_end = self.period_end
         if not return_period:
             return_period = self.return_period
-        if not api_token:
-            api_token = self.api_token
         
-        crop = crop.lower().replace(' ', '_')
 
         # create standardised beneficial fraction file name
-        period_start_str = period_start.strftime('%Y%m%d')
-        period_end_str = period_end.strftime('%Y%m%d')
-
-        beneficial_fraction_filename = 'L{}_{}_bf_{}_{}.tif'.format(
-            self.wapor_level, crop, period_start_str,period_end_str)
-
-        beneficial_fraction_raster_path = os.path.join(self.project['results'], beneficial_fraction_filename)
+        beneficial_fraction_raster_path = self.structure.generate_output_file_path(
+            description='bf',
+            period_start=period_start,
+            period_end=period_end,
+            output_folder='results',
+            mask_folder=mask_folder,
+            ext='.tif',
+            )
 
         if not os.path.exists(beneficial_fraction_raster_path):
             # retrieve and calculate average of evapotranspiration for the given period
             sum_evapotranspiration = self.retrieve_and_analyse_period_of_wapor_rasters(
-                    api_token=api_token,
                     period_start=period_start,
                     period_end=period_end,
                     datacomponent= 'AETI',
                     numpy_function=np.nansum,
-                    crop_mask_path=crop_mask_path,
-                    crop=crop,
+                    mask_raster_path=mask_raster_path,
+                    mask_folder=mask_folder,
                     statistic='sum',
                     return_period=return_period,
                     output_nodata=output_nodata)  
-
+             
             # retrieve and calculate average of evapotranspiration for the given period
             sum_transpiration = self.retrieve_and_analyse_period_of_wapor_rasters(
-                    api_token=api_token,
                     period_start=period_start,
                     period_end=period_end,
                     datacomponent= 'T',
                     numpy_function=np.nansum,
-                    crop_mask_path=crop_mask_path,
-                    crop=crop,
+                    mask_raster_path=mask_raster_path,
+                    mask_folder=mask_folder,
                     statistic='sum',
                     return_period=return_period,
                     output_nodata=output_nodata)  
-
+  
             # calculate beneficial_fraction for the given period (AETI/POTET)
             statistics.calc_dual_array_statistics( 
                 a=sum_transpiration,
                 b=sum_evapotranspiration,
                 calc_function=statistics.ceiling_divide,
                 output_raster_path=beneficial_fraction_raster_path,
-                template_raster_path=crop_mask_path,
+                template_raster_path=mask_raster_path,
                 output_nodata=output_nodata,
                 mask_to_template=True)
             
@@ -990,17 +784,22 @@ class WaporAnalysis(WaporStructure):
         if fields_shapefile_path:
             print('Calculating Beneficial Fraction field statistics...')
             
-            bf_field_stats = self.calc_field_statistics(
+            bf_csv_filepath = self.structure.generate_output_file_path(
+                description='bf',
+                period_start=period_start,
+                period_end=period_end,
+                output_folder='results',
+                mask_folder=mask_folder,
+                ext='.csv',
+            )       
+            bf_field_stats = statistics.calc_field_statistics(
                 fields_shapefile_path=fields_shapefile_path,
                 input_rasters=[beneficial_fraction_raster_path],
-                template_raster_path=crop_mask_path,
-                crop=crop,
+                output_csv_path=bf_csv_filepath,
                 field_stats=field_stats,
-                analysis_name='bf',
                 id_key=id_key,
-                period_start= period_start,
-                period_end=period_end,
-                out_dict=out_dict)
+                out_dict=out_dict,
+                waterpip_files=True)
 
             print('Beneficial fraction field stats calculated: bf (Effeciency PAI)')
 
@@ -1014,13 +813,12 @@ class WaporAnalysis(WaporStructure):
     # pretty sure this one is wrong currently but the method safi describes is field based lets see if this temporal pixel based version has worth
     def calc_coefficient_of_variation(
         self, 
-        crop_mask_path: str,
-        crop: str,
+        mask_raster_path: str,
+        mask_folder: str,
         fields_shapefile_path: str,
         field_stats: list = ['mean', 'stddev'],
         id_key: str= 'wpid',
         out_dict: bool=False,
-        api_token: str=None,
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = None,
@@ -1030,20 +828,19 @@ class WaporAnalysis(WaporStructure):
             calculate a coefficient of variation score per field for the given period
             testing for equity in the area as defined by the class shapefile
 
-            cov is a special pefromancie indicator in that there is no raster equivalent
+            cov is a special pefromance indicator in that there is no raster equivalent
 
             equity: standard deviation of summed Evapotranspiration per field / 
             mean of summed evapotranspiration per field
 
         Args:
             self: (see class for details)
-            api_token: token used to retrieve the data 
             period_start: start of the season in datetime
             period_end: end of the season in datetime
             return_period: return period to retrieve data for, 
             auto set to monthly
-            crop_mask_path: path to the crop mask defining the area for analysis
-            crop: crop being analysed used in the name
+            mask_raster_path: path to the raster mask defining the area for analysis if provided
+            mask_folder: name to use for the mask folder auto set to nomask if not provided
             percentile: percentile of evapotranspiration values to choose as the 
             potential evapotranspiration value
             output_nodata: nodata value to use on output
@@ -1066,32 +863,25 @@ class WaporAnalysis(WaporStructure):
             period_end = self.period_end
         if not return_period:
             return_period = self.return_period
-        if not api_token:
-            api_token = self.api_token
-
-        crop = crop.lower().replace(' ', '_')
 
         # create standardised coeffecient of variation file name
-        period_start_str = period_start.strftime('%Y%m%d')
-        period_end_str = period_end.strftime('%Y%m%d')
-
-        cov_dictname = 'L{}_{}_cov_{}_{}'.format(
-            self.wapor_level, crop, period_start_str,period_end_str)
-
-        cov_filename = 'L{}_{}_cov_{}_{}.csv'.format(
-            self.wapor_level, crop, period_start_str,period_end_str)
-
-        cov_csv_path = os.path.join(self.project['results'], cov_filename)
-
+        cov_csv_filepath = self.structure.generate_output_file_path(
+            description='cov',
+            period_start=period_start,
+            period_end=period_end,
+            output_folder='results',
+            mask_folder=mask_folder,
+            ext='.csv',
+            )
+      
         # retrieve and calculate average of evapotranspiration for the given period
         sum_evapotranspiration_raster_path = self.retrieve_and_analyse_period_of_wapor_rasters(
-                api_token=api_token,
                 period_start=period_start,
                 period_end=period_end,
                 datacomponent= 'AETI',
                 numpy_function=np.nansum,
-                crop_mask_path=crop_mask_path,
-                crop=crop,
+                mask_raster_path=mask_raster_path,
+                mask_folder=mask_folder,
                 statistic='sum',
                 return_period=return_period,
                 output_nodata=output_nodata)  
@@ -1102,17 +892,13 @@ class WaporAnalysis(WaporStructure):
             if stat not in field_stats:
                 field_stats.append(stat)
 
-        cov_dict, __ = self.calc_field_statistics(
+        cov_dict = statistics.calc_field_statistics(
             fields_shapefile_path=fields_shapefile_path,
             input_rasters=[sum_evapotranspiration_raster_path],
-            template_raster_path=crop_mask_path,
-            crop=crop,
             field_stats=field_stats,
-            analysis_name='cov',
             id_key=id_key,
-            period_start= period_start,
-            period_end=period_end,
-            out_dict=True)
+            out_dict=True,
+            waterpip_files=True)[0]
 
         # calculate Coefficient of Variation
         for key in cov_dict.keys():
@@ -1133,26 +919,25 @@ class WaporAnalysis(WaporStructure):
                 cov_dict[key]['cov'] = cov_dict[key][stddev_key] / cov_dict[key][mean_key]
 
         if not out_dict:
-            cov_field_stats = statistics.dict_to_dataframe(in_dict=cov_dict, orient='index')
+            cov_field_stats = statistics.dict_to_dataframe(in_dict=cov_dict)
             statistics.output_table(
                 table=cov_field_stats, 
-                output_file_path=cov_csv_path)
+                output_file_path=cov_csv_filepath)
 
         else:
             cov_field_stats = cov_dict
-            cov_csv_path = None
+            cov_csv_filepath = None
         
         print('Coefficient of Variation field stats calculated: cov (Equity PAI)')
 
-        return (None, (cov_field_stats, cov_csv_path))
+        return (None, (cov_field_stats, cov_csv_filepath))
 
     ##########################
     def calc_wapor_performance_indicators(
         self, 
-        crop_mask_path: str,
+        mask_raster_path: str,
         fields_shapefile_path: str,
-        crop: str,
-        api_token: str=None,
+        mask_folder: str,
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = None,
@@ -1162,13 +947,12 @@ class WaporAnalysis(WaporStructure):
         out_dict: bool=False):
         """
         Description:
-            calculate all available perfornamce indicators per cell to test for adequacy, effeciency
+            calculate all available performance indicators per cell to test for adequacy, effeciency
             reliability and equity for the given period and area as defined by the class shapefile
 
             beneficial fraction: Sum of Transpiration  / Sum of Evapotranspiration (bf)
-            equity here: standard deviation of Evapotranspiration / Evapotranspiration Mean (cov)
-            equity safi: standard deviation of summed Evapotranspiration per field / 
-            mean of summed evapotranspiration per field (cov)
+            coeffecient of variation: standard deviation of summed Evapotranspiration per field / 
+            mean of summed evapotranspiration per field
             crop_water_deficit: Potential evapotranspiration - Sum of Evapotranspiration (cwd)
             relative evapotranspiration: Sum of Evapotranspiration / Potential evapotranspiration (ret)
             temporal relative evapotranspiration: per dekad Sum of Evapotranspiration / Potential evapotranspiration
@@ -1176,13 +960,12 @@ class WaporAnalysis(WaporStructure):
 
         Args:
             self: (see class for details)
-            api_token: token used to retrieve the data 
             period_start: start of the season in datetime
             period_end: end of the season in datetime
             return_period: return period to retrieve data for, 
             auto set to monthly
-            crop_mask_path: path to the crop mask defining the area for analysis
-            crop: crop being analysed used in the name
+            mask_raster_path: path to the raster mask defining the area for analysis if provided
+            mask_folder: name to use for the mask folder auto set to nomask if not provided
             output_nodata: nodata value to use on output
             fields_shapefile_path: if the path to the fields shapefile_path is provided
             then the field level statistics are also calculated           
@@ -1203,27 +986,23 @@ class WaporAnalysis(WaporStructure):
             period_end = self.period_end
         if not return_period:
             return_period = self.return_period
-        if not api_token:
-            api_token = self.api_token
-
-        crop = crop.lower().replace(' ', '_')
 
         # create standardised coeffecient of variation file name
-        period_start_str = period_start.strftime('%Y%m%d')
-        period_end_str = period_end.strftime('%Y%m%d')
-
-        pai_filename = 'L{}_{}_pai_{}_{}.csv'.format(
-            self.wapor_level, crop, period_start_str,period_end_str)
-
-        pai_csv_path = os.path.join(self.project['results'], pai_filename)
-
+        pai_csv_filepath = self.structure.generate_output_file_path(
+            description='pai',
+            period_start=period_start,
+            period_end=period_end,
+            output_folder='results',
+            mask_folder=mask_folder,
+            ext='.csv',
+        )
+        
         pai_rasters = []
 
         # calculate beneficial fraction
         bf_outputs = self.calc_beneficial_fraction( 
-            api_token=api_token,
-            crop_mask_path=crop_mask_path,
-            crop=crop,
+            mask_raster_path=mask_raster_path,
+            mask_folder=mask_folder,
             period_start=period_start,
             period_end=period_end,
             return_period=return_period,
@@ -1233,9 +1012,8 @@ class WaporAnalysis(WaporStructure):
 
         # calculate crop water deficit
         cwd_outputs = self.calc_crop_water_deficit( 
-            api_token=api_token,
-            crop_mask_path=crop_mask_path,
-            crop=crop,
+            mask_raster_path=mask_raster_path,
+            mask_folder=mask_folder,
             period_start=period_start,
             period_end=period_end,
             return_period=return_period,
@@ -1245,9 +1023,8 @@ class WaporAnalysis(WaporStructure):
 
         # calculate relative evapotranspiration
         ret_outputs = self.calc_relative_evapotranspiration( 
-            api_token=api_token,
-            crop_mask_path=crop_mask_path,
-            crop=crop,
+            mask_raster_path=mask_raster_path,
+            mask_folder=mask_folder,
             period_start=period_start,
             period_end=period_end,
             return_period=return_period,
@@ -1257,9 +1034,8 @@ class WaporAnalysis(WaporStructure):
 
         # calculate temporal_variation_of_relative_evapotranspiration
         tret_outputs = self.calc_temporal_variation_of_relative_evapotranspiration( 
-            api_token=api_token,
-            crop_mask_path=crop_mask_path,
-            crop=crop,
+            mask_raster_path=mask_raster_path,
+            mask_folder=mask_folder,
             period_start=period_start,
             period_end=period_end,
             return_period=return_period,
@@ -1272,49 +1048,43 @@ class WaporAnalysis(WaporStructure):
 
         if fields_shapefile_path:
             # calculate coefficient of variation
-            cov_dict = self.calc_coefficient_of_variation( 
-                api_token=api_token,
-                crop_mask_path=crop_mask_path,
+            cov_df = self.calc_coefficient_of_variation( 
+                mask_raster_path=mask_raster_path,
                 fields_shapefile_path=fields_shapefile_path,
-                crop=crop,
+                mask_folder=mask_folder,
                 field_stats=field_stats,
                 period_start=period_start,
                 period_end=period_end,
                 return_period=return_period,
                 output_nodata=output_nodata,
-                out_dict=True)[1][0]
+                out_dict=False)[1][0]
 
             print('Calculating all remaining PAI field statistics...')
 
             pai_rasters = [r for r in pai_rasters if r]
             
-            pai_dict = self.calc_field_statistics(
+            pai_df = statistics.calc_field_statistics(
                 fields_shapefile_path=fields_shapefile_path,
                 input_rasters=pai_rasters,
-                template_raster_path=crop_mask_path,
                 field_stats=field_stats,
                 id_key=id_key,
-                crop=crop,
-                analysis_name='pai',
-                period_start= period_start,
-                period_end=period_end,
-                out_dict=True)[0]
+                out_dict=False,
+                waterpip_files=True)[0]
 
             # add cov to the pai_dict
-            for key in pai_dict.keys():
-                for stat in cov_dict[key].keys():
-                    pai_dict[key][stat] = cov_dict[key][stat]
+            pai_df = pai_df.merge(cov_df,left_on=id_key, right_on=id_key)
 
-            if not out_dict:
-                pai_field_stats = statistics.dict_to_dataframe(in_dict=pai_dict, orient='index')
-                statistics.output_table(
-                    table=pai_field_stats, 
-                    output_file_path=pai_csv_path)
+            statistics.output_table(
+                table=pai_df, 
+                output_file_path=pai_csv_filepath)
 
-                pai_field_outputs = (pai_field_stats, pai_csv_path)
+            if out_dict:
+                pai_field_stats = pai_df.to_dict()
 
             else:
-                pass
+                pai_field_stats = pai_df
+
+            pai_field_outputs = (pai_field_stats, pai_csv_filepath)
 
             print('Performance indicator field stats calculated: PAI')
 
@@ -1325,8 +1095,140 @@ class WaporAnalysis(WaporStructure):
 
         return output_statistics
 
-
-
 if __name__ == "__main__":
-    print('main')
-  
+    start = default_timer()
+    args = sys.argv
+
+    try:
+        analysis = WaporAnalysis(            
+            waterpip_directory=r'C:\Users\roeland\workspace\projects\waterpip\testing',
+            shapefile_path=r"C:\Users\roeland\workspace\projects\waterpip\testing\shapefiles\L3_ODN_LCC_202015.shp",
+            wapor_level=3,
+            project_name='mali_test',
+            api_token='c009b20150c8b6986dd321ebe1df6dbd0c5cc7684475a6ad88da64e7b45ff89ecc4e24128d2cf5bb')
+
+        mask_raster_path2, mask_shape_path2 = analysis.create_raster_mask_from_wapor_lcc(
+            lcc_categories=['irrigated sugar cane','sugarcane'],
+            mask_name='mali_mask_sugarcane',
+            period_start=datetime(2020,3,5),
+            period_end=datetime(2020,4,5),
+            area_threshold_multiplier=2
+        )
+        outputs = analysis.calc_wapor_performance_indicators(
+            period_start=datetime(2020,3,5), 
+            period_end=datetime(2020,4,5),
+            fields_shapefile_path=mask_shape_path2,
+            mask_raster_path=mask_raster_path2,
+            mask_folder='mali_mask_sugarcane',
+            output_nodata=-9999,
+            )
+
+    finally:
+        end = default_timer()
+        print('process duration: {}'.format(timedelta(seconds=round(end - start, 2))))
+
+
+"""
+    ##########################
+    # old methods
+    ##########################
+    def old_calc_temporal_potential_evapotranspiration(
+        self, 
+        api_token: str,
+        years: int = 10, 
+        template_raster_path: str = None, 
+        nodata:float=None):
+        
+        calculate the monthly potential evapotranspiration
+        for an area defined in a shapefile
+
+        PET = the best 95% percentile evapotranspiration score for a given
+        month across ten retrieved years going back from last year. 
+        Not the max score so as to filter for unrealistic values 
+
+        years: years to go back
+        
+    	# check for evapotranspiration files in the automatically identified folder
+        filename = 'L{}_ETPOT.tif'.format(self.wapor_level)
+        potet_raster_path = os.path.join(self.project['reference'], filename)
+        monthly_potet_list = []
+
+        if not os.path.exists(potet_raster_path):
+            # set up the retrieval class
+            retrieve = WaporRetrieval(
+            waterpip_directory=self.waterpip_directory,
+            project_name=self.project_name,
+            shapefile_path=self.shapefile_path,
+            template_raster_path=template_raster_path,
+            wapor_level=self.wapor_level,
+            return_period='M',
+            api_token=api_token,
+            silent=True,
+            )
+            
+            # create monthly potet folder
+            monthly_potet_folder =  os.path.join(self.project['reference'], 'monthly')
+            if not os.path.exists(monthly_potet_folder):
+                os.makedirs(monthly_potet_folder)
+
+            # setup retrieval dates per month not per year
+            et_months = {}
+            for month in range(1,13):
+                year = datetime.today().year
+                dates = []
+                for i in range(0,years):
+                    temp_date = datetime(year,1,1) - timedelta(days=365)
+                    year = temp_date.year
+                    dates.append(datetime(year,month, 1))
+                et_months[month] = dates
+
+            # though it is likely slower to download all this data seperately instead of in one go 
+            # it is likely less likely to have problems with intermittent internet issues
+            for month in et_months.keys():
+                print('constructing potet raster for month {} of 12'.format(month))
+                output_monthly_potet = os.path.join(monthly_potet_folder,'potet_{}.tif'.format(month))
+                if not os.path.exists(output_monthly_potet):
+                    dates = et_months[month]
+                    rasters_for_retrieval = []
+                    # retrieve data across all years for the given month
+                    for retrieval_date in dates:
+                        print('retrieving download info for: {}'.format(retrieval_date))
+                        retrieval_info = retrieve.retrieve_wapor_download_info(
+                           period_start=retrieval_date,
+                            period_end=retrieval_date + timedelta(days=1),
+                            datacomponents=['AETI'])
+
+                        rasters_for_retrieval.extend(retrieval_info)
+                
+                    retrieved_data = retrieve.retrieve_wapor_rasters(wapor_list=rasters_for_retrieval)
+
+                    # calculate monthly potet for the given month from all monthly rasters over 10 years using numpy
+                    statistics.calc_multiple_array_numpy_statistic(
+                        input=retrieved_data['AETI']['vrt_path'],
+                        numpy_function=np.nanpercentile,
+                        output_raster_path=output_monthly_potet,
+                        axis=0,
+                        q=95,
+                        nodata=nodata)
+
+                    # remove intermediate files
+                    for _file in retrieved_data['AETI']['raster_list']:
+                        os.remove(_file)
+
+                    os.remove(retrieved_data['AETI']['vrt_path'])
+
+                monthly_potet_list.append(output_monthly_potet)
+
+            # calculate max of all months for total potet (maybe mean instead?)
+            statistics.calc_multiple_array_statistics(
+                input=monthly_potet_list,
+                numpy_function=np.nanmax,
+                output_raster_path=potet_raster_path,
+                axis=0,
+                nodata=nodata)
+
+        return potet_raster_path
+
+"""
+
+

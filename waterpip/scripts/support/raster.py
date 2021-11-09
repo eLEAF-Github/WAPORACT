@@ -13,9 +13,40 @@ import fiona
 
 import numpy as np
 
+import math
+
 ########################################################
 # General Functions
 ########################################################
+def area_of_latlon_pixel(pixel_size, center_lat):
+    """Calculate m^2 area of a wgs84 square pixel.
+
+    Copied from: https://gis.stackexchange.com/a/127327/2397
+
+    Parameters:
+        pixel_size (float): length of side of pixel in degrees.
+        center_lat (float): latitude of the center of the pixel. Note this
+            value +/- half the `pixel-size` must not exceed 90/-90 degrees
+            latitude or an invalid area will be calculated.
+
+    Returns:
+        Area of square pixel of side length `pixel_size` centered at
+        `center_lat` in m^2.
+
+    """
+    a = 6378137  # meters
+    b = 6356752.3142  # meters
+    e = math.sqrt(1 - (b/a)**2)
+    area_list = []
+    for f in [center_lat+pixel_size/2, center_lat-pixel_size/2]:
+        zm = 1 - e*math.sin(math.radians(f))
+        zp = 1 + e*math.sin(math.radians(f))
+        area_list.append(
+            math.pi * b**2 * (
+                math.log(zp/zm) / (2*e) +
+                math.sin(math.radians(f)) / (zp*zm)))
+    return pixel_size / 360. * (area_list[0] - area_list[1])
+
 def check_gdal_open(
         file: str,
         return_ds: bool = False):
@@ -120,11 +151,12 @@ def gdal_info(raster_path: str, band_num: int=1) -> dict:
     metadata['ymin'] = metadata['ymax'] + (metadata['geotransform'][5] * metadata['ysize'])
     metadata['xres'] = metadata['geotransform'][1]
     metadata['yres'] = metadata['geotransform'][5]
-    metadata['cell_size'] = abs(metadata['geotransform'][1]) * abs(metadata['geotransform'][5])
     if metadata['crs'] == 4326:
-        metadata['cell_unit'] = 'latlon'
+        central_lat = metadata['ymin'] + (metadata['ymax'] - metadata['ymin'])
+        metadata['cell_area'] = area_of_latlon_pixel(pixel_size=metadata['xres'], center_lat=central_lat)
     else:
-        metadata['cell_unit'] = 'meters'
+        metadata['cell_area'] = abs(metadata['xres']) * abs(metadata['yres'])
+    metadata['cell_area_unit'] = 'meters_sq'
     metadata['gdal_data_type_code'] = raster_band.DataType
     metadata['gdal_data_type_name'] = gdal.GetDataTypeName(metadata['gdal_data_type_code'])
     metadata['nodata'] = raster_band.GetNoDataValue()
@@ -219,13 +251,13 @@ def raster_to_array(input_raster_path: str, band_num: int=1, dtype:str = None, u
     return array
 
 #################################
-def count_unique_values_raster(
+def count_raster_values(
     input_raster_path: str
     ):
     """
     Description:
         count the occurrence of unique values in a raster
-        and also calcultate the percentage of non nan cells
+        and also calculate the percentage of non nan cells
         they make up
 
     Args:
@@ -238,24 +270,26 @@ def count_unique_values_raster(
 
     meta = gdal_info(input_raster_path)
 
-
     input_array = raster_to_array(input_raster_path)
 
     non_nan_cell_count = np.count_nonzero(~np.isnan(input_array))
 
     counts = np.unique(input_array[~np.isnan(input_array)], return_counts=True)
 
-    count_tuples = [(value, count) for value, count in zip(list(counts[0]), list(counts[1]))] 
-
     counts_list = []
-    for count in count_tuples:
-        percentage = round(count[1] / non_nan_cell_count * 100, 3)
+
+    for value, count in zip(list(counts[0]), list(counts[1])):
+        # if a float is returned check if it cna be made an int
+        if isinstance(value,float):
+            if value.is_integer():
+                value = int(value)
+        percentage = round(count / non_nan_cell_count * 100, 3)
         counts_list.append({
-            'value': count[0] , 
-            'count': count[1], 
+            'value': value , 
+            'count': count, 
             'percentage': percentage,
-            'area': count[1] * meta['cell_size'],
-            'unit': meta['cell_unit']})
+            'area': count * meta['cell_area'],
+            'unit': meta['cell_area_unit']})
 
     input_raster_path = input_array = None
 
@@ -426,7 +460,7 @@ def rasterize_shape(
     output_raster_path: str,
     reverse: bool = False,
     output_nodata=0,
-    gdal_datatype = 1,
+    output_gdal_datatype = 1,
     column: str = None,
     all_touched: bool=False,
     creation_options: list=["TILED=YES", "COMPRESS=DEFLATE"]
@@ -444,7 +478,7 @@ def rasterize_shape(
         reverse: if True reverse the mask if masking
         output_nodata: nodata value to use for the output. if action=attribute 
         make sure you have a fitting nodatavalue
-        gdal_datatype: datatype of the output raster. if action=attribute 
+        output_gdal_datatype: datatype of the output raster. if action=attribute 
         make sure you have a fitting datatype (6: float, 1: int)
         column: if provided burns in (uses) the values in the column specified 
         in the shapefile otherwise 0,1
@@ -474,7 +508,7 @@ def rasterize_shape(
         meta['xsize'], 
         meta['ysize'], 
         1, 
-        gdal_datatype,
+        output_gdal_datatype,
         options=creation_options)
 
     target_ds.SetGeoTransform(meta['geotransform'])
@@ -546,24 +580,30 @@ def create_polygon_index_dict(
     return polygon_index_dict
 
 ############################
-def create_value_specific_mask(
-    mask_value: float,
+def create_values_specific_mask(
+    mask_values: list,
     input_raster_path: str,
-    output_raster_path: str,
+    output_mask_raster_path: str,
+    output_values_raster_path: str=None,
     output_crs= None,
+    output_nodata: float=-9999,
+    keep_values: bool= False
     ):
     """
     Description:
-        masks to a specific value in the input raster
+        masks to a list of specific values in the input raster
         setting it to 1 and all other cells to 0
 
     Args:        
-        mask_value: value to mask too mask too 
+        mask_values: values to mask the mask too 
         input_raster_path: path to the raster to mask
-        output_raster_path: path to output the mask raster too
+        output_mask_raster_path: path to output the 0,1 mask raster too
         can be the same as the input path
+        output_values_raster_path: if an output path is provided will also output a
+        masked raster that maintains the unmaksed values
         output_crs: if porvided outputs the mask to this projection
         and not that of the input raster
+        output_nodata: output nodata used if creating a values raster
 
     Return:
         int: 0
@@ -574,34 +614,50 @@ def create_value_specific_mask(
 
     metadata = gdal_info(input_raster_path)
 
-    count_occurence = (input_array == mask_value).sum()
+    values_array = np.isin(input_array,mask_values)
+    
+    count_occurence = values_array.sum()
 
     percentage_occurrence = count_occurence / metadata['cell_count'] * 100
 
     if count_occurence == 0:
-        raise AttributeError('given value to mask too occurs zero times in the given raster, please specify another value')
+        raise AttributeError('given values to mask too occurs zero times in the given raster, please specify another value')
 
     elif percentage_occurrence < 1:
-        print("WARNING: given value to mask too covers less that 1 percent of the given raster: {}".format(percentage_occurrence))
+        print("WARNING: given values to mask too cover less that 1 percent of the given raster: {}".format(percentage_occurrence))
 
     else:
         pass
-
-    output_array = np.where(input_array == mask_value, 1, np.nan)
+    
+    # create specific values array
+    value_mask_array = np.where(values_array, input_array, np.nan)
+    # create mask array
+    mask_array = np.where(values_array, 1, np.nan)
 
     if output_crs:
         if metadata['crs'] == output_crs:
             output_crs = None
 
+    if output_values_raster_path:
+        array_to_raster(
+            metadata=input_raster_path,
+            input_array=value_mask_array,
+            output_raster_path=output_values_raster_path,
+            output_gdal_data_type=6,
+            output_crs=output_crs,
+            output_nodata=output_nodata)
+
+        check_gdal_open(output_values_raster_path)
+
     array_to_raster(
         metadata=input_raster_path,
-        input_array=output_array,
-        output_raster_path=output_raster_path,
+        input_array=mask_array,
+        output_raster_path=output_mask_raster_path,
         output_gdal_data_type=1,
         output_crs=output_crs,
         output_nodata=0)
 
-    check_gdal_open(output_raster_path)
+    check_gdal_open(output_mask_raster_path)
 
     return 0
 
@@ -653,26 +709,32 @@ def mask_raster(
 
 ############################
 def match_raster(
-    template_raster_path: str,
+    match_raster_path: str,
     input_raster_path: str, 
     output_raster_path: str,
+    mask_raster_path: str = None,
     resample_method: str = 'near',
     output_crs: int = None,
     output_nodata: float = -9999,
-    mask_to_template: bool = False, 
     creation_options: list=["TILED=YES", "COMPRESS=DEFLATE"]):
     """
     Description:
-        matches the input raster to the metadata of the template
+        matches the input raster to the metadata of the match
         raster and outputs the result to the output_raster_path
 
-        if the input raster already matches the template raster it copies the input raster
+        NOTE: if the input raster already matches the template raster it copies the input raster
         to the output location
+
+        NOTE: if the path to a mask raster is provided it uses that to mask the input as
+        well. this is recommended to be the same raster as the match_raster_path
     
     Args:
-        template_raster_path: path to the template raster providing the metadata
+        match_raster_path: path to the raster providing the metadata to match 
+        the input raster too
         input_raster_path: input raster to alter as needed
         output_raster_path: path to output the output raster too
+        mask_raster_path: path to the raster to use to mask the input raster
+        can be the same raster as the match raster (recommended) 
         resample_method: resample method to use if needed
         output_crs: output projection of the raster, 
         if not provided uses the nodata value of the template
@@ -684,13 +746,13 @@ def match_raster(
     Return
         int: 0
     """
-    check_gdal_open(template_raster_path)
+    check_gdal_open(match_raster_path)
     check_gdal_open(input_raster_path)
 
     if not os.path.exists(os.path.dirname(output_raster_path)):
         os.makedirs(os.path.dirname(output_raster_path))
 
-    template_meta = gdal_info(template_raster_path)
+    template_meta = gdal_info(match_raster_path)
     input_meta = gdal_info(input_raster_path)
 
     if not output_crs:
@@ -736,9 +798,10 @@ def match_raster(
 
     check_gdal_open(output_raster_path)
 
-    if mask_to_template:
+    if mask_raster_path:
+        check_gdal_open(mask_raster_path)
         mask_raster(
-            mask_raster_path=template_raster_path,
+            mask_raster_path=mask_raster_path,
             input_raster_path=output_raster_path,
             output_raster_path=output_raster_path,
             output_nodata=output_nodata)
@@ -746,6 +809,8 @@ def match_raster(
     set_band_descriptions(
         raster_file_path=output_raster_path,
         band_names=[output_raster_path])
+
+    check_gdal_open(output_raster_path)
 
     return 0
 
