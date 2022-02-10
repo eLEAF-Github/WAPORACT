@@ -1,4 +1,4 @@
-# Water Productivity in practice - tools: WAPORACT package 
+# Water Productivity in practice: WAPORACT  
 _Version 0.2_   
 _2022/2/10_
 _Authors: Roeland de Koning (Roeland.de.Koning@eleaf.com), Abdur Rahim Safi (Abdur.Rahim@eleaf.com), Annemarie Klaasse (annemarie.klaasse@eleaf.com)_
