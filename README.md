@@ -11,7 +11,7 @@ For further details see the [wiki](https://github.com/eLEAF-Github/WAPORACT/wiki
 
 ## Release Notes
 
-### 0.2 2022/2/10
+#### 0.2 2022/2/10
 
 - first version of the WaPORAct package as part of the waterpip project. Includes basic framework for producing actionable data in a repeatable and clear manner based of the available WAPOR datasets using generic tools. 
 
