@@ -5,11 +5,9 @@
 *.7z
 *.rar
 *.pyo
-*.jpg
-*.jpeg
 *.tiff
-*.png
 *.code-workspace
+*.checkpoit.ipynb
 
 ### Directories
 .vscode
