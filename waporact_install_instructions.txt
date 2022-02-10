@@ -1,4 +1,4 @@
-waterpip package setup:
+waporact package setup:
 
 1. Download Miniconda and run the .exe-file
 
@@ -24,29 +24,29 @@ If having issues beyond this point look it up online. Google and stackoverflow p
 
 it should return some info about conda. if it does not work even after restarting the terminal there is something wrong with your environmental variables or conda installation.
 
-Once it does work you can setup the waterpip environment
+Once it does work you can setup the waporact environment
 
-- navigate to the directory containing the waterpip.yml file by typing in 'cd' then the path to the directory as below:
+- navigate to the directory containing the waporact.yml file by typing in 'cd' then the path to the directory as below:
 
-`cd <path>/git/waterpip` (enter your path in <path>)
+`cd <path>/git/waporact` (enter your path in <path>)
 
-- create the conda environment from the yml file by runnin the floowling in the terminal once you are in the waterpip directory:
+- create the conda environment from the yml file by runnin the floowling in the terminal once you are in the waporact directory:
 
 `conda env create -f environment.yml`
 
 - activate the environment to check:
 
-`conda activate waterpip`
+`conda activate waporact`
 
 -  the new env should have activated for you and should be visible on the left in your terminal next to where you are typing
 
 - Next change to the location of the cloned repository
 
-`cd <path>/git/waterpip` (enter your path in <path>) if needed
+`cd <path>/git/waporact` (enter your path in <path>) if needed
 
-Note: make sure your in the waterpip working directory, this is the folder that holds the file setup.py:
+Note: make sure your in the waporact working directory, this is the folder that holds the file setup.py:
 
-- then install the waterpip package itself using the setup.py file by running:
+- then install the waporact package itself using the setup.py file by running:
 
 `pip install .`
 ###########################################################
@@ -56,7 +56,7 @@ Note: make sure your in the waterpip working directory, this is the folder that 
 
 so run:
 
-`conda activate waterpip`
+`conda activate waporact`
 
 then:
 
@@ -77,9 +77,9 @@ open the next juypter notebook using your chosen application: wapor_download_dat
 
 in terminal you can open the notebook by running:
 
-move to the waterpip location:
+move to the waporact location:
 
-'cd <path>/git/waterpip`
+'cd <path>/git/waporact`
 
 then run:
 

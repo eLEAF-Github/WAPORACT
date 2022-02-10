@@ -1,11 +1,8 @@
-
 """
-minbuza_waterpip project
+waporact package
 
-statistics support functions
+statistics functions (stand alone/support functions)
 """
-
-
 ##########################
 # import packages
 import os
@@ -26,12 +23,12 @@ from shapely.geometry import shape
 import numpy as np
 import pandas as pd
 
-from waterpip.scripts.retrieval.wapor_land_cover_classification_codes import wapor_lcc
+from waporact.scripts.retrieval.wapor_land_cover_classification_codes import wapor_lcc
 
-from waterpip.scripts.structure.wapor_structure import WaporStructure
+from waporact.scripts.structure.wapor_structure import WaporStructure
 
-from waterpip.scripts.support import raster
-from waterpip.scripts.support import vector 
+from waporact.scripts.tools import raster
+from waporact.scripts.tools import vector 
 
 ########################################################
 # Dataframe Functions
@@ -99,7 +96,7 @@ def output_table(
     """
     Description:
         takes a list of dicitonaries, a dictionary, a nested dictionary or 
-        a dataframe and outputs a dataframe as a table to file usign the 
+        a dataframe and outputs a dataframe as a table to file using the 
         given output_path. Auto outputs in all formats specified in the output file,
         as well as those in the output formats list 
 
@@ -190,7 +187,7 @@ def floor_minus(a,b):
 def generate_zonal_stats_column_and_function(
     input_name: str,
     statistic: str, 
-    waterpip_files: bool=False):
+    waporact_files: bool=False):
     """
     Description:
         generates a column name for the zonal stat calculated using a combination og the input_name and 
@@ -200,7 +197,7 @@ def generate_zonal_stats_column_and_function(
         input_name: name to sue in the column
         statistic: statistic keyword used in the input name as well as being used to retrieve the 
         required numpy function
-        waterpip_files: if True assumes a standardised waterpip file path has been provided for 
+        waporact_files: if True assumes a standardised waporact file path has been provided for 
         the input name and deconstructs it to provide an automatic column name 
 
     Return:
@@ -220,7 +217,7 @@ def generate_zonal_stats_column_and_function(
         numpy_function = numpy_dict[statistic]
 
     # generate column name
-    if waterpip_files:
+    if waporact_files:
         try:
             name_dict = WaporStructure.deconstruct_output_file_name(input_name)
             column_name = statistic + '_' + name_dict['description'] + '_' + name_dict['period_start_str'] + '_' + name_dict['period_end_str']
@@ -242,7 +239,7 @@ def calc_field_statistics(
     field_stats: list=['min', 'max', 'mean', 'sum', 'stddev'],
     id_key: str='wpid',
     out_dict: bool=False,
-    waterpip_files: bool=False):
+    waporact_files: bool=False):
     """
     Description:
         calculate various statistics per field from a raster using the shapefile to identify the fields
@@ -256,7 +253,7 @@ def calc_field_statistics(
         (note: also handy for joining tables and the crop mask shape/other shapes back later) 
         out_dict: if true outputs a dictionary instead of a dataframe
         output_csv_path: path to output the csv too if provided
-        waterpip_files: if True assumes a standardised waterpip file path has been provided for 
+        waporact_files: if True assumes a standardised waporact file path has been provided for 
         the input name and deconstructs it to provide an automatic column name
 
     Return:
@@ -282,7 +279,7 @@ def calc_field_statistics(
             field_stats=field_stats,
             out_dict=out_dict,
             id_key=id_key,
-            waterpip_files=waterpip_files
+            waporact_files=waporact_files
             )
     else:
         print('attempting to calculate zonal stats for a single raster')
@@ -292,7 +289,7 @@ def calc_field_statistics(
             field_stats=field_stats,
             out_dict=out_dict,
             id_key=id_key,
-            waterpip_files=waterpip_files
+            waporact_files=waporact_files
             )
 
     # if a csv is wanted as output transfrom as needed and create it
@@ -314,7 +311,7 @@ def multiple_raster_zonal_stats(
     field_stats: list,
     out_dict: bool=False,
     id_key: str ='wpid',
-    waterpip_files: bool=False): 
+    waporact_files: bool=False): 
     """
     Description:
         rasterize the features in the shapefile according to the
@@ -333,7 +330,7 @@ def multiple_raster_zonal_stats(
         through vrts inside the list
         field_stats: list of statistics to carry out, also used in the column names 
         out_dict: if True exports a dict instead of a dataframe
-        waterpip_files: if True assumes a standardised waterpip file path has been provided for 
+        waporact_files: if True assumes a standardised waporact file path has been provided for 
         the input name and deconstructs it to provide an automatic column name
 
     Return:        
@@ -360,7 +357,7 @@ def multiple_raster_zonal_stats(
         field_stats=field_stats,
         out_dict=out_dict,
         id_key=id_key,
-        waterpip_files=waterpip_files 
+        waporact_files=waporact_files 
     )
 
     return stats_df
@@ -373,7 +370,7 @@ def equal_dimensions_zonal_stats(
     field_stats: list,
     out_dict: bool=False,
     id_key: str = 'wpid', 
-    waterpip_files: bool=False):
+    waporact_files: bool=False):
     """
     Description:
         takes a dictionary made using create_polygon_index_dict
@@ -395,7 +392,7 @@ def equal_dimensions_zonal_stats(
         id_key: name of shapefile column/feature dictionary key providing the feature indices 
         wpid is a reliable autogenerated index provided while making the crop mask
         (note: also handy for joining tables and the crop mask shape/other shapes back later) 
-        waterpip_files: if True assumes a standardised waterpip file path has been provided for 
+        waporact_files: if True assumes a standardised waporact file path has been provided for 
         the input name and deconstructs it to provide an automatic column name
 
     Return:
@@ -428,7 +425,7 @@ def equal_dimensions_zonal_stats(
                         column_name, numpy_function = generate_zonal_stats_column_and_function(
                             input_name=band_name,
                             statistic=stat,
-                            waterpip_files=waterpip_files) 
+                            waporact_files=waporact_files) 
                         stats[key][column_name] = numpy_function(array[value])
 
         else:
@@ -438,7 +435,7 @@ def equal_dimensions_zonal_stats(
                     column_name, numpy_function = generate_zonal_stats_column_and_function(
                         input_name=raster_name,
                         statistic=stat,
-                        waterpip_files=waterpip_files) 
+                        waporact_files=waporact_files) 
                     stats[key][column_name] = numpy_function(array[value])
 
     if not out_dict:
@@ -453,7 +450,7 @@ def single_raster_zonal_stats(
     field_stats: list,
     id_key: str='wpid',
     out_dict: bool=False,
-    waterpip_files: bool=False):
+    waporact_files: bool=False):
     """
     Description:
         carries out a zonal stats analysis and organises the results 
@@ -467,7 +464,7 @@ def single_raster_zonal_stats(
         (note: also handy for joining tables and the crop mask shape/other shapes back later) 
         field_stats: list of statistics to carry out, also used in the column names 
         out_dict: if True exports a dict instead of a dataframe
-        waterpip_files: if True assumes a standardised waterpip file path has been provided for 
+        waporact_files: if True assumes a standardised waporact file path has been provided for 
         the input name and deconstructs it to provide an automatic column name
 
     Return:
@@ -512,7 +509,7 @@ def single_raster_zonal_stats(
                         column_name, __ = generate_zonal_stats_column_and_function(
                             input_name=name,
                             statistic=stat,
-                            waterpip_files=waterpip_files) 
+                            waporact_files=waporact_files) 
                         stats[tid][column_name] = np.nan  
                                 
                 else:
@@ -554,7 +551,7 @@ def single_raster_zonal_stats(
                         column_name, numpy_function = generate_zonal_stats_column_and_function(
                             input_name=name,
                             statistic=stat,
-                            waterpip_files=waterpip_files) 
+                            waporact_files=waporact_files) 
                         stats[tid][column_name] = numpy_function(temp_array)
     
     if skipped_features:
@@ -635,7 +632,7 @@ def calc_dual_array_statistics(
     """
     Description:
     given two rasters or arrays applies the given function to them and 
-    outputs the resutl as a new raster
+    outputs the result as a new raster
     
     Args:
         a: path to raster a or array a to calculate a statistic from in combo with b
@@ -950,21 +947,3 @@ def mostcommonzaxis(array_stack, **kwargs):
 if __name__ == "__main__":
     start = default_timer()
     args = sys.argv
-    
-    try:
-        categories_dict = wapor_lcc(3)
-
-        count_data, count_csv = raster_count_statistics(
-            input_raster_path=r"C:\Users\roeland\workspace\projects\waterpip\testing\mali_test\L3\03_masked\nomask\L3_LCC_20200101_20200111.tif",
-            output_csv=r"C:\Users\roeland\workspace\projects\waterpip\testing\mali_test\L3\03_masked\nomask\L3_LCC_20200101_20200111.csv",
-            categories_dict=categories_dict,
-            category_name= 'landcover',
-            out_dict=False
-            )
-
-        print(count_data)
-
-    finally:
-        end = default_timer()
-        print('process duration: {}'.format(timedelta(seconds=round(end - start, 2))))
-

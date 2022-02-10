@@ -1,4 +1,8 @@
+"""
+waporact package
 
+vector functions (stand alone/support functions)
+"""
 ##########################
 # import packages
 import os
@@ -14,6 +18,7 @@ from osgeo import gdal
 import json
 import pandas as pd
 import geopandas as gpd
+import numpy as np
 import fiona
 from shapely.geometry import mapping, shape, MultiPolygon, Polygon
 import shapely.ops as ops
@@ -21,12 +26,12 @@ import rtree
 import pyproj 
 from functools import partial
 
-from waterpip.scripts.support.raster import gdal_info
-from waterpip.scripts.support.statistics import dict_to_dataframe
+from waporact.scripts.tools.raster import gdal_info
+from waporact.scripts.tools.statistics import dict_to_dataframe
 
 ##########################
 def file_to_records(
-    table: str = None,
+    table: Union[str, pd.DataFrame],
     column_mapping: dict = None,
     default_values: dict = None,
     sep: str = ';',
@@ -36,11 +41,16 @@ def file_to_records(
     to_dict: bool=False) -> dict:
     """
     Description:
-        reads in a file (shapefile, excel, csv, json) and
+        reads in a file (shapefile, excel, csv, json, dataframe) and
         extracts them to  according to the specifications as 
         a dataframe or dict. If dict it filters the rows (values)
         out and stores them as dicts according to 
         key (column name), value (column, row item)
+
+        NOTE: if a dataframe is passed the whole process is skipped 
+        and the dataframe is outputted again
+
+        NOTE: filter only works for dict at this time
 
     Args:
         table: path to the file of interest
@@ -57,60 +67,63 @@ def file_to_records(
     Return:
         list, dataframe, geodataframe : extracted records mapped from the file   
     """
+    if isinstance(table, pd.DataFrame):
+        records = table
 
-    ext = os.path.splitext(table)[1]
+    else:
+        ext = os.path.splitext(table)[1]
 
-    if ext == '.shp':
-        df = gpd.read_file(table)
-        if output_crs:
-            df = df.to_crs('EPSG:{}'.format(output_crs))
+        if ext == '.shp':
+            df = gpd.read_file(table)
+            if output_crs:
+                df = df.to_crs('EPSG:{}'.format(output_crs))
+            
+            df['st_aswkt'] = df.geometry.to_wkt()
+
+        elif ext == '.xlsx':
+            df = pd.read_excel(table,sheet_name=sheet)
+
+        elif ext == '.csv':
+            df = pd.read_csv(table,sep=sep)
+
+        elif ext == '.json':
+            df = pd.read_json(table)
+
+        else:
+            raise AttributeError('either a shapefile, csv, excel or json needs to be provided')
+
+        if to_dict:
+            records = df.to_dict('records')
+
+            if column_mapping:
+                mapped_records = []
+                for rec in records:
+                    new_rec = rec.copy()
+                    for k_new, k_old in column_mapping.items():
+                        new_rec = {k_new if k == k_old else k:v for k,v in new_rec.items()}
+                    mapped_records.append(new_rec)
+
+                records = mapped_records
+
+            if default_values:
+                default_records = []
+                for rec in records:
+                    for k, v in default_values.items():
+                        rec.setdefault(k, v)
+                    default_records.append(rec)
+
+                records = default_records
+
+            if filter:
+                filtered_records = []
+                for rec in records:
+                    if any(rec[k] in v for k, v in filter.items()):
+                        filtered_records.append(rec)
+                    
+                records = filtered_records
         
-        df['st_aswkt'] = df.geometry.to_wkt()
-
-    elif ext == '.xlsx':
-        df = pd.read_excel(table,sheet_name=sheet)
-
-    elif ext == '.csv':
-        df = pd.read_csv(table,sep=sep)
-
-    elif ext == '.json':
-        df = pd.read_json(table)
-
-    else:
-        raise AttributeError('either a shapefile, csv, excel or json needs to be provided')
-
-    if to_dict:
-        records = df.to_dict('records')
-
-        if column_mapping:
-            mapped_records = []
-            for rec in records:
-                new_rec = rec.copy()
-                for k_new, k_old in column_mapping.items():
-                    new_rec = {k_new if k == k_old else k:v for k,v in new_rec.items()}
-                mapped_records.append(new_rec)
-
-            records = mapped_records
-
-        if default_values:
-            default_records = []
-            for rec in records:
-                for k, v in default_values.items():
-                    rec.setdefault(k, v)
-                default_records.append(rec)
-
-            records = default_records
-
-        if filter:
-            filtered_records = []
-            for rec in records:
-                if any(rec[k] in v for k, v in filter.items()):
-                    filtered_records.append(rec)
-                
-            records = filtered_records
-    
-    else:
-        records = df
+        else:
+            records = df
 
     return records
 
@@ -193,6 +206,8 @@ def retrieve_geodataframe_bbox(geodataframe: gpd.GeoDataFrame):
     """
     Description:
         retrieves the boundingbox of all geometries in a geodataframe
+        increase size by 0.01 total diameter to make sure data falls inside
+        when retrieving data from wapor (not cut off by cell size)
 
     Args:
         geodataframe: geodataframe to retrieve boundingbox for        
@@ -214,7 +229,96 @@ def retrieve_geodataframe_bbox(geodataframe: gpd.GeoDataFrame):
     maxx = max([max(box[0]) for box in bboxes])
     maxy = max([max(box[1]) for box in bboxes])
 
+    # increase size by 0.01 total diameter to make sure data falls inside
+    # when retrieved
+
+    diffx = maxx - minx 
+    diffy = maxy - miny
+
+    addx = 0.01 * diffx
+    addy = 0.01 * diffy
+
+    minx = minx - addx 
+    maxx = maxx + addx
+    miny = miny - addy 
+    maxy = maxy + addy  
+
     return (minx, miny, maxx, maxy)
+
+##########################
+def retrieve_geodataframe_central_coords(geodataframe: gpd.GeoDataFrame):
+    """
+    Description:
+        retrieves the boundingbox of all geometries in a geodataframe
+
+    Args:
+        geodataframe: geodataframe to retrieve boundingbox for        
+    
+    Return:
+        tuple: bbox tuple
+    """
+    # remove empty geometry
+    valid_geom = geodataframe[geodataframe.geometry.map(lambda z: True if not z.is_empty else False)]
+
+    # explode (extract polygons from) multipolygons
+    singlepart_geoms = valid_geom.geometry.apply(lambda geom: list(geom) if isinstance(geom, MultiPolygon) else geom).explode()
+    
+    # get the bounds of each geometry
+    bboxes = singlepart_geoms.map(lambda z: z.exterior.xy)
+
+    minx = min([min(box[0]) for box in bboxes])
+    miny = min([min(box[1]) for box in bboxes])
+    maxx = max([max(box[0]) for box in bboxes])
+    maxy = max([max(box[1]) for box in bboxes])
+
+    x = minx + (maxx - minx) / 2 
+    y = miny + (maxy - miny) / 2 
+
+    return x,y
+
+############################
+def get_plotting_zoom_level_and_central_coords_from_gdf(
+        gdf: gpd.GeoDataFrame):
+    """
+    Description:
+
+    NOTE: linear sclar interpolation for the zoom levle is taken from
+        https://community.plotly.com/t/dynamic-zoom-for-mapbox/32658/7
+
+    Args:
+        gdf: geodataframe to mine for the required information
+
+    Return:
+    """
+    bbox = retrieve_geodataframe_bbox(geodataframe=gdf)
+    bbox_poly = create_bbox_polygon(bbox=bbox)
+    area = calc_lat_lon_polygon_area(bbox_poly) /10000
+
+    interp_dict = {
+        20: 0,
+        19: 100,
+        17: 1000,
+        14: 10000,
+        12: 50000,
+        10: 500000,
+        9: 1000000,
+        7: 5000000,
+        5: 5**10,
+        3: 6*10,
+        1: 8**10,
+        }
+    zooms = [key for key in interp_dict.keys()]
+    areas = [value for value in interp_dict.values()]
+
+    zoom = int(np.interp(x=area,
+                     xp=areas,
+                     fp=zooms))
+
+    # retrieve central mapping points
+    x, y = retrieve_geodataframe_central_coords(gdf)
+
+    # Finally, return the zoom level and the associated boundary-box center coordinates
+    return zoom, (x, y)
 
 ############################
 def retrieve_shapefile_crs(shapefile_path: str) -> int:
@@ -347,6 +451,24 @@ def shape_reprojection(shapefile_path: str, output_directory: str, crs: int, out
 
     return output_shp
 
+
+############################
+def create_bbox_polygon(bbox: tuple):
+    """
+    """
+    #set bbox coordinates
+    xy_list = [(bbox[0],bbox[3]),
+    (bbox[2],bbox[3]),
+    (bbox[2],bbox[1]),
+    (bbox[0],bbox[1]),]
+
+    # set to polygon
+    poly = shape({'type':'Polygon',
+        'coordinates': [xy_list]})
+
+    return poly
+
+
 ############################
 def create_bbox_shapefile(
     output_shape_path: str,  
@@ -365,15 +487,11 @@ def create_bbox_shapefile(
         schema = schema, crs = "EPSG:{}".format(crs))
 
     #set bbox coordinates
-    xy_list = [(bbox[0],bbox[3]),
-    (bbox[2],bbox[3]),
-    (bbox[2],bbox[1]),
-    (bbox[0],bbox[1]),]
+    bbox_poly = create_bbox_polygon(bbox=bbox)
 
     #save record and close shapefile
     rowDict = {
-    'geometry' : {'type':'Polygon',
-                    'coordinates': [xy_list]}, 
+    'geometry' : mapping(bbox_poly), 
     'properties': {'Name' : 'bbox'},
     }
     shp.write(rowDict)
@@ -446,7 +564,7 @@ def check_add_wpid_to_shapefile(
         checks for and if not present adds a wpid to a 
         shapefile and outputs it to the same location
 
-        wpid: geometry unique identifer (the name is abritrary wpid = waterpip id)
+        wpid: geometry unique identifer (the name is abritrary wpid = waporact id)
 
     Args:
         input_shapefile_path: path to the shapefile to add fid to as
@@ -1087,19 +1205,9 @@ def raster_to_polygon(
     check_add_wpid_to_shapefile(input_shapefile_path=output_shapefile_path)
 
     return 0
+
+ 
 if __name__ == "__main__":
     start = default_timer()
     args = sys.argv
     
-    try:
-        records = pd.read_csv(
-            r"C:\Users\roeland\workspace\projects\waterpip\waterpip_dir\awash_sugarcane\L3\04_results\L3_sugarcane_pai_20200305_20200506.csv",
-            sep=';')
-        records_to_shapefile(
-            records=records,
-            output_shapefile_path=r"C:\Users\roeland\workspace\projects\waterpip\waterpip_dir\awash_sugarcane\L3\04_results\L3_sugarcane_pai_20200305_20200506.shp",
-            fields_shapefile_path= r"C:\Users\roeland\workspace\projects\waterpip\waterpip_dir\awash_sugarcane\L3\00_reference\sugarcane_20200305_20200406_mask.shp",
-            union_key="wpid")
-    finally:
-        end = default_timer()
-        print('process duration: {}'.format(timedelta(seconds=round(end - start, 2))))

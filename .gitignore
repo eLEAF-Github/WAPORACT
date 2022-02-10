@@ -1,9 +1,6 @@
 ### File extensions
 *.pyc
 *.tif
-*.shp
-*.shx
-*.prj
 *.zip
 *.7z
 *.rar
@@ -12,6 +9,7 @@
 *.jpeg
 *.tiff
 *.png
+*.code-workspace
 
 ### Directories
 .vscode
@@ -19,6 +17,8 @@ __pychache__
 .idea/
 .Rproj
 .Rhistory
+docs
+Sphinx-docs
 
 ## Build files
 .installed.cfg

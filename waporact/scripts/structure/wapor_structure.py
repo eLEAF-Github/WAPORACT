@@ -1,7 +1,12 @@
 """
-script for the structuring WAPOR projects per area in a standard way
-"""
+waporact package
 
+structure class (support class)
+
+used to automatically organise the data when running the retrieval class or example pipeline in wapor_pai.py
+"""
+##########################
+# import packages
 import os
 from datetime import datetime, timedelta
 from parse import parse
@@ -14,12 +19,12 @@ from numpy import str0
 class WaporStructure(object):
     """
     Description:
-        samll class used to structure the waterpip projects in a 
+        samll class used to structure the waporact projects in a 
         standard way for future use called by 
-        all other class to support file retrieval and storage
+        all other class to tools file retrieval and storage
     
     Args:
-        waterpip_directory: location to store the projects
+        waporact_directory: location to store the projects
         project: name of the project folder
         wapor_level: wapor_level integer to download data for either 1,2, or 3
         period_start: datetime object specifying the start of the period 
@@ -45,7 +50,7 @@ class WaporStructure(object):
 
     def __init__(
         self,
-        waterpip_directory: str,
+        waporact_directory: str,
         wapor_level: int,
         country_code: str='notyetinitialised',
         project_name: str = 'test',
@@ -55,7 +60,7 @@ class WaporStructure(object):
     ):
 
         self.project_name = project_name
-        self.waterpip_directory = waterpip_directory
+        self.waporact_directory = waporact_directory
         self.wapor_level = wapor_level
         self.period_start = period_start 
         self.period_end = period_end
@@ -68,10 +73,10 @@ class WaporStructure(object):
         # setup the project structure dict
         project = {}
         # setup metadata and temp dirs
-        project['meta'] = os.path.join(self.waterpip_directory, 'metadata')
+        project['meta'] = os.path.join(self.waporact_directory, 'metadata')
 
         # setup the project dir
-        project_dir = os.path.join(self.waterpip_directory, self.project_name)
+        project_dir = os.path.join(self.waporact_directory, self.project_name)
         
         data_dir = os.path.join(project_dir, 'L{}'.format(self.wapor_level))
         
@@ -95,11 +100,11 @@ class WaporStructure(object):
 
     #################################
     @property
-    def waterpip_directory(self):
+    def waporact_directory(self):
         return self._project_directory
 
-    @waterpip_directory.setter
-    def waterpip_directory(self,value):
+    @waporact_directory.setter
+    def waporact_directory(self,value):
         """
         Quick description:
             checks for the existance of the projects dir 
@@ -207,7 +212,7 @@ class WaporStructure(object):
         self,
         component: str,
         return_period:str,
-        waterpip_folder: str
+        waporact_folder: str
         ):
         """
         Description:
@@ -215,18 +220,18 @@ class WaporStructure(object):
             class and a few remaining arguments.
 
         Args:
-            waterpip_folder: keyword argument used to retrieve the path to a main waterpip folder
+            waporact_folder: keyword argument used to retrieve the path to a main waporact folder
             process_name: name of the process used in creating the file/datacomponent/result in the file
             return_period: return period of the wapor data being downloaded
 
         """
-        self.waterpip_folder = waterpip_folder
+        self.waporact_folder = waporact_folder
         cube_code= self.cube_code_template.format(
             wapor_level=self.wapor_level,
             component=component,
             return_period=return_period)
 
-        folder_path = os.path.join(self.waterpip_folder, cube_code)
+        folder_path = os.path.join(self.waporact_folder, cube_code)
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
@@ -247,7 +252,7 @@ class WaporStructure(object):
             class and a few remaining arguments.
 
         Args:
-            output_folder: keyword argument used to retrieve the path to a main waterpip folder
+            output_folder: keyword argument used to retrieve the path to a main waporact folder
             description: file content one word description used in creating the file name and a subfolder
             period_start: period the analysis covers (start) (if none mainly for the mask it is set to na)
             period_end: period the analysis covers (end) (if none mainly for the mask it is set to na)
@@ -387,7 +392,7 @@ class WaporStructure(object):
             based of the inputs provided in the class and a few remaining arguments.
 
         Args:
-            input_folder: keyword argument used to retrieve the path to a main waterpip inputs folder            
+            input_folder: keyword argument used to retrieve the path to a main waporact inputs folder            
             return_period: return period of the wapor data being downloaded
             component: datacomponent being retrieved use din the folder name
             raster_id: wapor raster id
@@ -481,25 +486,5 @@ class WaporStructure(object):
 if __name__ == "__main__":
     start = default_timer()
 
-    try:
-        struct = WaporStructure(
-            project_name='new_donwload_method_2',
-            waterpip_directory=r'C:\Users\roeland\workspace\projects\waterpip\testing',
-            wapor_level=3,
-            return_period='D',
-            period_start= datetime(2020,1,1),
-            period_end= datetime(2020,1,31),
-        )
 
-        filepath = struct.deconstruct_output_file_path(r"C:\Users\roeland\workspace\projects\waterpip\testing\new_donwload_method_2\L3\03_masked\nomask\L3_T_20200101_20200201.vrt")
-        print(filepath)
-    except Exception as e:
-        raise e
-
-    finally:
-        end = default_timer()
-        print('process duration: {}'.format(timedelta(seconds=round(end - start, 2))))
-
-
-     
 

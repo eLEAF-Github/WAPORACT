@@ -1,4 +1,16 @@
+
+"""
+waporact package
+
+raster functions (stand alone/support functions)
+"""
+##########################
+# import packages
 import os
+from typing import Union
+from datetime import timedelta
+from timeit import default_timer
+
 from posixpath import splitext
 import shutil
 from typing import Union

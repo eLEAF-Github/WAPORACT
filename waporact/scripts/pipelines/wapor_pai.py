@@ -1,9 +1,8 @@
 """
-minbuza_waterpip project
+waporact package
 
-analysis script
+Performance Area Indicator Calculation (example pipeline class) 
 """
-
 ##########################
 # import packages
 import os
@@ -16,16 +15,17 @@ from timeit import default_timer
 
 from typing import Union
 
-from waterpip.scripts.support import raster, statistics
-from waterpip.scripts.retrieval.wapor_retrieval import WaporRetrieval
+from waporact.scripts.tools import raster, statistics
+from waporact.scripts.tools.plots import interactive_choropleth_map
+from waporact.scripts.retrieval.wapor_retrieval import WaporRetrieval
 
 ##########################
-class WaporAnalysis(WaporRetrieval):
+class WaporPAI(WaporRetrieval):
     """
     Description:
-        Given rasters and a shapefile calculates standardised statistics
-        and stores them in the specific shapefile according to to the structure
-        given in WaporStructure
+        Given rasters and a shapefile calculates standardised statistics for
+        Performance Area Indicators and stores them in the specific shapefile 
+        according to to the structure given in WaporStructure
 
     Args:
         wapor_directory: directory to output downloaded and processed data too
@@ -46,7 +46,7 @@ class WaporAnalysis(WaporRetrieval):
     """
     def __init__(        
         self,
-        waterpip_directory: str,
+        waporact_directory: str,
         shapefile_path: str,
         api_token: str,
         wapor_level: int,
@@ -56,7 +56,7 @@ class WaporAnalysis(WaporRetrieval):
         return_period: str = 'D',
         silent: bool = False
     ):
-        self.waterpip_directory = waterpip_directory
+        self.waporact_directory = waporact_directory
         self.project_name = project_name
         self.shapefile_path = shapefile_path
         self.wapor_level = wapor_level
@@ -67,7 +67,7 @@ class WaporAnalysis(WaporRetrieval):
         self.silent = silent
 
         super().__init__(
-            waterpip_directory=self.waterpip_directory,
+            waporact_directory=self.waporact_directory,
             project_name=self.project_name,
             shapefile_path=self.shapefile_path,
             wapor_level=self.wapor_level,
@@ -75,6 +75,12 @@ class WaporAnalysis(WaporRetrieval):
             api_token=self.api_token,
             silent=self.silent,
             )
+
+
+    ########################################################
+    # Sub Dataframe functions
+    ########################################################
+
 
     ########################################################
     # Sub Raster functions
@@ -371,7 +377,7 @@ class WaporAnalysis(WaporRetrieval):
                 field_stats=field_stats,
                 id_key=id_key,
                 out_dict=out_dict,
-                waterpip_files=True)
+                waporact_files=True)
 
             print('Relative evapotranspiration field statistics calculated: ret (Adequacy PAI)')
 
@@ -541,12 +547,12 @@ class WaporAnalysis(WaporRetrieval):
 
             tret_field_stats = statistics.calc_field_statistics(
                 fields_shapefile_path=fields_shapefile_path,
-                input_rasters=[temporal_relative_evapotranspiration_vrt_path, temporal_relative_evapotranspiration_raster_path],
+                input_rasters=[temporal_relative_evapotranspiration_raster_path, temporal_relative_evapotranspiration_vrt_path],
                 output_csv_path=tret_csv_filepath,
                 field_stats=field_stats,
                 id_key=id_key,
                 out_dict=out_dict,
-                waterpip_files=True)
+                waporact_files=True)
 
             print('Temporal variation in relative evapotranspiration field statistics calculated: tret (Reliability PAI)')
         
@@ -672,7 +678,7 @@ class WaporAnalysis(WaporRetrieval):
                 field_stats=field_stats,
                 id_key=id_key,
                 out_dict=out_dict,
-                waterpip_files=True)
+                waporact_files=True)
 
             print('Crop water deficit field statistics calculated: cwd (Adequacy PAI)')
         
@@ -799,7 +805,7 @@ class WaporAnalysis(WaporRetrieval):
                 field_stats=field_stats,
                 id_key=id_key,
                 out_dict=out_dict,
-                waterpip_files=True)
+                waporact_files=True)
 
             print('Beneficial fraction field stats calculated: bf (Effeciency PAI)')
 
@@ -898,7 +904,7 @@ class WaporAnalysis(WaporRetrieval):
             field_stats=field_stats,
             id_key=id_key,
             out_dict=True,
-            waterpip_files=True)[0]
+            waporact_files=True)[0]
 
         # calculate Coefficient of Variation
         for key in cov_dict.keys():
@@ -987,7 +993,7 @@ class WaporAnalysis(WaporRetrieval):
         if not return_period:
             return_period = self.return_period
 
-        # create standardised coeffecient of variation file name
+        # create standardised performance indicator stats file name
         pai_csv_filepath = self.structure.generate_output_file_path(
             description='pai',
             period_start=period_start,
@@ -995,6 +1001,16 @@ class WaporAnalysis(WaporRetrieval):
             output_folder='results',
             mask_folder=mask_folder,
             ext='.csv',
+        )
+
+        # create standardised performance indicator html file name
+        pai_html_filepath = self.structure.generate_output_file_path(
+            description='pai',
+            period_start=period_start,
+            period_end=period_end,
+            output_folder='images',
+            mask_folder=mask_folder,
+            ext='.html',
         )
         
         pai_rasters = []
@@ -1042,7 +1058,6 @@ class WaporAnalysis(WaporRetrieval):
             output_nodata=output_nodata)
 
         pai_rasters.append(tret_outputs[0][0])
-        pai_rasters.append(tret_outputs[0][1])
 
         print('All PAI rasters calculated')
 
@@ -1068,8 +1083,8 @@ class WaporAnalysis(WaporRetrieval):
                 input_rasters=pai_rasters,
                 field_stats=field_stats,
                 id_key=id_key,
-                out_dict=False,
-                waterpip_files=True)[0]
+                out_dict=True,
+                waporact_files=True)[0]
 
             # add cov to the pai_dict
             pai_df = pai_df.merge(cov_df,left_on=id_key, right_on=id_key)
@@ -1091,144 +1106,32 @@ class WaporAnalysis(WaporRetrieval):
         else:
             pai_field_outputs = None
 
-        output_statistics = (pai_rasters, pai_field_outputs)
+        secondary_hovertemplate_inputs= {
+            'mean_L3_bf_20200305_20200405':'mean_L3_bf_20200305_20200405',
+            'mean_L3_cwd_20200305_20200405':'mean_L3_cwd_20200305_20200405',
+            'mean_L3_tret_20200305_20200405': 'mean_L3_tret_20200305_20200405'
+        }
 
-        return output_statistics
+        # create chloropleth output map
+        interactive_choropleth_map(
+            input_shapefile_path=fields_shapefile_path,
+            input_csv_path=pai_field_outputs[1],
+            z_column='mean_L3_ret_20200305_20200405',
+            z_label='mean_L3_ret_20200305_20200405',
+            secondary_hovertemplate_inputs=secondary_hovertemplate_inputs,
+            output_html_path=pai_html_filepath,
+            union_key=id_key)
+            
+        print('Performance indicator field stats map made: PAI')
+
+        outputs = (pai_rasters, pai_field_outputs, pai_html_filepath)
+
+        return outputs
 
 if __name__ == "__main__":
     start = default_timer()
     args = sys.argv
 
-    try:
-        analysis = WaporAnalysis(            
-            waterpip_directory=r'C:\Users\roeland\workspace\projects\waterpip\testing',
-            shapefile_path=r"C:\Users\roeland\workspace\projects\waterpip\testing\shapefiles\L3_ODN_LCC_202015.shp",
-            wapor_level=3,
-            project_name='mali_test',
-            api_token='c009b20150c8b6986dd321ebe1df6dbd0c5cc7684475a6ad88da64e7b45ff89ecc4e24128d2cf5bb')
 
-        mask_raster_path2, mask_shape_path2 = analysis.create_raster_mask_from_wapor_lcc(
-            lcc_categories=['irrigated sugar cane','sugarcane'],
-            mask_name='mali_mask_sugarcane',
-            period_start=datetime(2020,3,5),
-            period_end=datetime(2020,4,5),
-            area_threshold_multiplier=2
-        )
-        outputs = analysis.calc_wapor_performance_indicators(
-            period_start=datetime(2020,3,5), 
-            period_end=datetime(2020,4,5),
-            fields_shapefile_path=mask_shape_path2,
-            mask_raster_path=mask_raster_path2,
-            mask_folder='mali_mask_sugarcane',
-            output_nodata=-9999,
-            )
-
-    finally:
-        end = default_timer()
-        print('process duration: {}'.format(timedelta(seconds=round(end - start, 2))))
-
-
-"""
-    ##########################
-    # old methods
-    ##########################
-    def old_calc_temporal_potential_evapotranspiration(
-        self, 
-        api_token: str,
-        years: int = 10, 
-        template_raster_path: str = None, 
-        nodata:float=None):
-        
-        calculate the monthly potential evapotranspiration
-        for an area defined in a shapefile
-
-        PET = the best 95% percentile evapotranspiration score for a given
-        month across ten retrieved years going back from last year. 
-        Not the max score so as to filter for unrealistic values 
-
-        years: years to go back
-        
-    	# check for evapotranspiration files in the automatically identified folder
-        filename = 'L{}_ETPOT.tif'.format(self.wapor_level)
-        potet_raster_path = os.path.join(self.project['reference'], filename)
-        monthly_potet_list = []
-
-        if not os.path.exists(potet_raster_path):
-            # set up the retrieval class
-            retrieve = WaporRetrieval(
-            waterpip_directory=self.waterpip_directory,
-            project_name=self.project_name,
-            shapefile_path=self.shapefile_path,
-            template_raster_path=template_raster_path,
-            wapor_level=self.wapor_level,
-            return_period='M',
-            api_token=api_token,
-            silent=True,
-            )
-            
-            # create monthly potet folder
-            monthly_potet_folder =  os.path.join(self.project['reference'], 'monthly')
-            if not os.path.exists(monthly_potet_folder):
-                os.makedirs(monthly_potet_folder)
-
-            # setup retrieval dates per month not per year
-            et_months = {}
-            for month in range(1,13):
-                year = datetime.today().year
-                dates = []
-                for i in range(0,years):
-                    temp_date = datetime(year,1,1) - timedelta(days=365)
-                    year = temp_date.year
-                    dates.append(datetime(year,month, 1))
-                et_months[month] = dates
-
-            # though it is likely slower to download all this data seperately instead of in one go 
-            # it is likely less likely to have problems with intermittent internet issues
-            for month in et_months.keys():
-                print('constructing potet raster for month {} of 12'.format(month))
-                output_monthly_potet = os.path.join(monthly_potet_folder,'potet_{}.tif'.format(month))
-                if not os.path.exists(output_monthly_potet):
-                    dates = et_months[month]
-                    rasters_for_retrieval = []
-                    # retrieve data across all years for the given month
-                    for retrieval_date in dates:
-                        print('retrieving download info for: {}'.format(retrieval_date))
-                        retrieval_info = retrieve.retrieve_wapor_download_info(
-                           period_start=retrieval_date,
-                            period_end=retrieval_date + timedelta(days=1),
-                            datacomponents=['AETI'])
-
-                        rasters_for_retrieval.extend(retrieval_info)
-                
-                    retrieved_data = retrieve.retrieve_wapor_rasters(wapor_list=rasters_for_retrieval)
-
-                    # calculate monthly potet for the given month from all monthly rasters over 10 years using numpy
-                    statistics.calc_multiple_array_numpy_statistic(
-                        input=retrieved_data['AETI']['vrt_path'],
-                        numpy_function=np.nanpercentile,
-                        output_raster_path=output_monthly_potet,
-                        axis=0,
-                        q=95,
-                        nodata=nodata)
-
-                    # remove intermediate files
-                    for _file in retrieved_data['AETI']['raster_list']:
-                        os.remove(_file)
-
-                    os.remove(retrieved_data['AETI']['vrt_path'])
-
-                monthly_potet_list.append(output_monthly_potet)
-
-            # calculate max of all months for total potet (maybe mean instead?)
-            statistics.calc_multiple_array_statistics(
-                input=monthly_potet_list,
-                numpy_function=np.nanmax,
-                output_raster_path=potet_raster_path,
-                axis=0,
-                nodata=nodata)
-
-        return potet_raster_path
-
-"""
 
 

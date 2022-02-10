@@ -1,10 +1,8 @@
-
 """
-minbuza_waterpip project
+waporact package
 
-land cover classification functions
+land classification related support functions (support functions)
 """
-
 #################################
 def check_categories_exist_in_count_dict(
     categories_list: list,

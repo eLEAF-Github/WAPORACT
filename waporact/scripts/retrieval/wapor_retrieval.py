@@ -1,7 +1,13 @@
+
 """
+waporact package
+
+retrieval class (stand alone/support class and functions)
+
 script for the retrieval of WAPOR data utilising the class WAPORAPI from the package WAPOROCW made by ITC DELFT 
 """
-
+##########################
+# import packages
 from logging import exception
 import os
 import sys
@@ -22,10 +28,10 @@ from fiona.crs import from_epsg
 import rtree
 import requests
 
-from waterpip.scripts.retrieval.wapor_api import WaporAPI
-from waterpip.scripts.retrieval import wapor_land_cover_classification_codes as lcc
-from waterpip.scripts.structure.wapor_structure import WaporStructure
-from waterpip.scripts.support import raster, vector, statistics
+from waporact.scripts.retrieval.wapor_api import WaporAPI
+from waporact.scripts.retrieval import wapor_land_cover_classification_codes as lcc
+from waporact.scripts.structure.wapor_structure import WaporStructure
+from waporact.scripts.tools import raster, vector, statistics
 
 #################################
 # stand alone functions
@@ -185,7 +191,7 @@ class WaporRetrieval(WaporAPI):
     """
     def __init__(
         self,
-        waterpip_directory: str,
+        waporact_directory: str,
         shapefile_path: str,
         wapor_level: int,
         api_token: str,
@@ -201,7 +207,7 @@ class WaporRetrieval(WaporAPI):
         # set and generate the parameters
         self.period_start = period_start
         self.period_end = period_end
-        self.waterpip_directory = waterpip_directory
+        self.waporact_directory = waporact_directory
         self.project_name = project_name
         self.wapor_level = wapor_level
         self.api_token = api_token
@@ -218,7 +224,7 @@ class WaporRetrieval(WaporAPI):
 
         # attach and setup the WaporStructure class
         self.structure = WaporStructure(
-            waterpip_directory=self.waterpip_directory,
+            waporact_directory=self.waporact_directory,
             return_period = self.return_period,
             project_name=self.project_name,
             period_end=self.period_end,
@@ -783,9 +789,11 @@ class WaporRetrieval(WaporAPI):
                 raster.check_gdal_open(mask_raster_path)
 
             if not os.path.exists(mask_shape_path):
-                vector.copy_shapefile(
-                    input_shapefile_path=input_shapefile_path,
-                    output_shapefile_path=mask_shape_path)
+                # create a shapefile of the raw crop_mask
+                vector.raster_to_polygon(
+                    input_raster_path=mask_raster_path,
+                    output_shapefile_path=mask_shape_path,
+                    mask_raster_path=mask_raster_path)
 
                 vector.check_add_wpid_to_shapefile(input_shapefile_path=mask_shape_path)
 
@@ -1698,29 +1706,3 @@ class WaporRetrieval(WaporAPI):
 if __name__ == "__main__":
     start = default_timer()
     args = sys.argv
-
-    try:
-        # activation of the wapor retrieval class 
-        retrieval = WaporRetrieval(            
-            waterpip_directory=r'C:\Users\roeland\workspace\projects\waterpip\testing',
-            shapefile_path=r"C:\Users\roeland\workspace\projects\waterpip\testing\shapefiles\L3_ODN_LCC_202015.shp",
-            wapor_level=3,
-            project_name='mali_test',
-            api_token='c009b20150c8b6986dd321ebe1df6dbd0c5cc7684475a6ad88da64e7b45ff89ecc4e24128d2cf5bb')
-
-        retrieved_rasters = retrieval.download_wapor_rasters(
-            period_start=datetime(2020,1,1),
-            period_end=datetime(2020,2,1),
-            datacomponents=['LCC'])
-
-        #wapor.create_raster_mask_from_wapor_lcc(
-        #   mask_name='litani-basin-wheat',
-        #    lcc_categories=['wheat']
-        #)
-
-    except Exception as e:
-        raise e
-
-    finally:
-        end = default_timer()
-        print('process duration: {}'.format(timedelta(seconds=round(end - start, 2))))

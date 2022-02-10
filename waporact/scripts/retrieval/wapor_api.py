@@ -7,7 +7,7 @@ Contact: b.tran@un-ihe.org
 Edited: Roeland de Koning
     eLEAF 2021
 
-
+Script used to retrieve data from the wapor api
 """
 import requests
 import json
