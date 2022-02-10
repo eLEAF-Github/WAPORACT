@@ -18,6 +18,7 @@ For further details see the [wiki](https://github.com/eLEAF-Github/WAPORACT/wiki
 ## In Development 
 
 - screenshots to support installation wiki
+- addition of visualisations to the wapor_pai.py pipeline
 - functions to create static maps in plots.py
 - complex statistical analysis tutorial for waporact basics tutorials
 - crop yield factor pipeline
