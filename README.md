@@ -13,15 +13,24 @@ For further details see the [wiki](https://github.com/eLEAF-Github/WAPORACT/wiki
 
 #### 0.2 2022/2/10
 
-- first version of the WaPORAct package as part of the waterpip project. Includes basic framework for producing actionable data in a repeatable and clear manner based of the available WAPOR datasets using generic tools. 
+- first version of the WaPORAct package as part of the waterpip project. Includes: 
+- basic framework for producing actionable data in a repeatable and clear manner based of the available WAPOR datasets using generic tools. 
+- retreival functions
+- vector and raster support functions
+- statistics functions for analysis
+- basic plotting functions for visualisation
+- basic tutorials
+- PAI pipeline example 
 
 ## In Development 
 
+- review and release of first pipeline notebook for pai's
 - screenshots to support installation wiki
 - addition of visualisations to the wapor_pai.py pipeline
 - functions to create static maps in plots.py
 - complex statistical analysis tutorial for waporact basics tutorials
-- crop yield factor pipeline
+- automated reporting functionality
+- crop yield factor pipeline and notebook
 
 
 ## Acknowledgement  
