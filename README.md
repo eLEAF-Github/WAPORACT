@@ -29,6 +29,8 @@ For further details see the [wiki](https://github.com/eLEAF-Github/WAPORACT/wiki
 - new install .txt file replacing .yml file creating an up to date and stable env
 - added missing screenshots to the wiki
 
+- improved wiki and isntall instructions clarity further and included exit python advice
+
 ## In Development 
 
 - review and release of first pipeline notebook for pai's
