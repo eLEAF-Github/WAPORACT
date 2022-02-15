@@ -20,12 +20,18 @@ For further details see the [wiki](https://github.com/eLEAF-Github/WAPORACT/wiki
 - statistics functions for analysis
 - basic plotting functions for visualisation
 - basic tutorials
-- PAI pipeline example 
+- PAI pipeline example
+
+
+#### 0.2 2022/2/15
+
+- improved install instructions including a pdf copy, see wiki for detailed view 
+- new install .txt file replacing .yml file creating an up to date and stable env
+- added missing screenshots to the wiki
 
 ## In Development 
 
 - review and release of first pipeline notebook for pai's
-- screenshots to support installation wiki
 - addition of visualisations to the wapor_pai.py pipeline
 - functions to create static maps in plots.py
 - complex statistical analysis tutorial for waporact basics tutorials
