@@ -29,6 +29,8 @@ For further details see the [wiki](https://github.com/eLEAF-Github/WAPORACT/wiki
 - new install .txt file replacing .yml file creating an up to date and stable env
 - added missing screenshots to the wiki
 
+#### 0.2 2022/2/15
+
 - improved wiki and isntall instructions clarity further and included exit python advice
 
 ## In Development 
