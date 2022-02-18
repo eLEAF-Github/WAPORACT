@@ -31,8 +31,12 @@ For further details see the [wiki](https://github.com/eLEAF-Github/WAPORACT/wiki
 
 #### 0.2 2022/2/15
 
-- improved wiki and isntall instructions clarity further and included exit python advice
+- improved wiki and install instructions clarity further and included exit python advice
 
+#### 0.2 2022/2/18
+
+- added running waporact instructions to the wiki and as pdf 
+- 
 ## In Development 
 
 - install tutorial video
