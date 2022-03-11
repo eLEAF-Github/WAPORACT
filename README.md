@@ -36,13 +36,22 @@ For further details see the [wiki](https://github.com/eLEAF-Github/WAPORACT/wiki
 #### 0.2 2022/2/18
 
 - added running waporact instructions to the wiki and as pdf 
-- 
+
+#### 0.2 2022/3/11
+
+- added 01c step by step yield calculation tutorial to waporact basics tutorials
+- bug fix: made axis argument for numpy multiple array calculation explicit
+- all functions producing a file now return the output file name not just success 0
+- in a function where a file is produced auto directory existance and build if missing added
+
 ## In Development 
 
 - install tutorial video
 - running tutorial 1A video
+- running tutorial 1B video
+- running tutorial 1C video
+- running tutorial 2A video
 - correction of shapefile in QGIS prior to running tutorial video
-- complex statistical analysis tutorial for waporact basics tutorials
 - review and release of first pipeline notebook for pai's
 - addition of visualisations to the wapor_pai.py pipeline
 - functions to create static maps in plots.py
