@@ -350,6 +350,11 @@ def array_to_raster(
     Return:
         str: path to the ouputted raster
     """
+        # create output subfolders as needed
+    output_dir = os.path.dirname(output_raster_path) 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     datatypes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 3, "Int16": 3, "uint32": 4,
     "int32": 5, "float32": 6, "float64": 7, "complex64": 10, "complex128": 11,
     "Int32": 5, "Float32": 6, "Float64": 7, "Complex64": 10, "Complex128": 11,}
@@ -505,6 +510,11 @@ def rasterize_shape(
     Raise:
         AttributeError: if inputs are specifed incorrectly
     """
+    # create output subfolders as needed
+    output_dir = os.path.dirname(output_raster_path) 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     if all_touched:
         all_touched = 'TRUE'
     else:
@@ -549,7 +559,7 @@ def rasterize_shape(
     target_ds = band = None
     check_gdal_open(output_raster_path)
 
-    return 0
+    return output_raster_path
 
 ############################
 def create_polygon_index_dict(
@@ -671,7 +681,7 @@ def create_values_specific_mask(
 
     check_gdal_open(output_mask_raster_path)
 
-    return 0
+    return output_mask_raster_path
 
 ############################
 def mask_raster(
@@ -717,7 +727,7 @@ def mask_raster(
 
     check_gdal_open(output_raster_path)
 
-    return 0
+    return output_raster_path
 
 ############################
 def match_raster(
@@ -761,8 +771,10 @@ def match_raster(
     check_gdal_open(match_raster_path)
     check_gdal_open(input_raster_path)
 
-    if not os.path.exists(os.path.dirname(output_raster_path)):
-        os.makedirs(os.path.dirname(output_raster_path))
+    # create output subfolders as needed
+    output_dir = os.path.dirname(output_raster_path) 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     template_meta = gdal_info(match_raster_path)
     input_meta = gdal_info(input_raster_path)
@@ -824,7 +836,7 @@ def match_raster(
 
     check_gdal_open(output_raster_path)
 
-    return 0
+    return output_raster_path
 
 ############################
 def build_vrt(
@@ -848,6 +860,11 @@ def build_vrt(
     Return:
         0 : vrt is created
     """
+    # create output subfolders as needed
+    output_dir = os.path.dirname(output_vrt_path) 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     if action == 'space':
         vrt_options = gdal.BuildVRTOptions(resampleAlg='cubic')
 
@@ -873,6 +890,6 @@ def build_vrt(
         raster_file_path=output_vrt_path,
         band_names=raster_list)
 
-    return 0
+    return output_vrt_path
 
-
+if __name__ == "__main__":

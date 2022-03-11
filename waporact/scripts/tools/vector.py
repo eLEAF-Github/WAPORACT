@@ -172,7 +172,7 @@ def records_to_shapefile(
         output_crs=output_crs,
     )
 
-    return 0
+    return output_shapefile_path
     
 ##########################
 def geodataframe_to_shapefile(
@@ -192,6 +192,10 @@ def geodataframe_to_shapefile(
     Return:
         int: 0    
     """
+    # create output subfolders as needed
+    output_dir = os.path.dirname(output_shapefile_path) 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     if output_crs:
         geodataframe = geodataframe.to_crs({'init': 'epsg:{}'.format(output_crs)})
 
@@ -199,7 +203,7 @@ def geodataframe_to_shapefile(
 
     print("geodataframe outputted to shapefile: {}".format(output_shapefile_path))
 
-    return 0
+    return output_shapefile_path
 
 ##########################
 def retrieve_geodataframe_bbox(geodataframe: gpd.GeoDataFrame):
@@ -371,7 +375,11 @@ def compare_raster_vector_crs(
     return 0
 
 ############################
-def shape_reprojection(shapefile_path: str, output_directory: str, crs: int, output_name: str='') -> str:
+def shape_reprojection(
+    shapefile_path: str, 
+    output_directory: str, 
+    crs: int, 
+    output_name: str='') -> str:
     """
     Description:
         reproject the input shapefile to a different coordinate system using a given crs code
@@ -475,7 +483,13 @@ def create_bbox_shapefile(
     bbox: tuple,
     crs:int=4326):
     """
+    create a bbox shapefile based on the vectors values in a bbox tuple
     """
+    # create output subfolders as needed
+    output_dir = os.path.dirname(output_shape_path) 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)    
+
     #define schema
     schema = {
         'geometry':'Polygon',
@@ -498,7 +512,7 @@ def create_bbox_shapefile(
     #close fiona object
     shp.close()
 
-    return 0
+    return output_shape_path
 
 ##########################
 def delete_shapefile(shapefile_path: str):
@@ -538,6 +552,11 @@ def copy_shapefile(
     Return:
         int: 0
     """  
+    # create output subfolders as needed
+    output_dir = os.path.dirname(output_shapefile_path) 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     # Read the original Shapefile
     with fiona.open(input_shapefile_path, 'r') as input:
         # The output has the same schema
@@ -553,7 +572,7 @@ def copy_shapefile(
             for feature in input:
                 output.write({'properties': feature['properties'],'geometry': mapping(shape(feature['geometry']))})
 
-    return 0
+    return output_shapefile_path
 
 ##########################
 def check_add_wpid_to_shapefile( 
@@ -611,7 +630,7 @@ def check_add_wpid_to_shapefile(
 
         delete_shapefile(shapefile_path=temp_shapefile_path)
 
-    return 0
+    return input_shapefile_path
 
 ##########################
 def add_matched_values_to_shapefile( 
@@ -660,7 +679,7 @@ def add_matched_values_to_shapefile(
 
     delete_shapefile(shapefile_path=temp_shapefile_path)
 
-    return 0
+    return input_shapefile_path
 
 
 
@@ -1035,6 +1054,11 @@ def polygonize_cleanup(
         int: 0
     
     """
+    # create output subfolders as needed
+    output_dir = os.path.dirname(output_shapefile_path) 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     if id_key == 'wpid':
         # check for and add possible missing identifier:
         check_add_wpid_to_shapefile(input_shapefile_path=input_shapefile_path)
@@ -1142,9 +1166,9 @@ def polygonize_cleanup(
     output = None
 
     # check for and add possible missing identifier:
-    check_add_wpid_to_shapefile(input_shapefile_path=input_shapefile_path, overwrite=True)
+    check_add_wpid_to_shapefile(input_shapefile_path=output_shapefile_path, overwrite=True)
 
-    return 0
+    return output_shapefile_path
 
 ##########################
 def raster_to_polygon(
@@ -1169,7 +1193,12 @@ def raster_to_polygon(
 
     Return:
         int: 0
-    """
+    """    
+    # create output subfolders as needed
+    output_dir = os.path.dirname(output_shapefile_path) 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     source_dataset = gdal.Open(input_raster_path)
     if source_dataset is None:
         raise AttributeError('Unable to open %s' % source_dataset)
@@ -1204,7 +1233,7 @@ def raster_to_polygon(
     # check for and add possible misisng identifier:
     check_add_wpid_to_shapefile(input_shapefile_path=output_shapefile_path)
 
-    return 0
+    return output_shapefile_path
 
  
 if __name__ == "__main__":

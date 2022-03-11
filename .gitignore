@@ -7,7 +7,7 @@
 *.pyo
 *.tiff
 *.code-workspace
-*.checkpoit.ipynb
+*.checkpoint.ipynb
 
 ### Directories
 .vscode

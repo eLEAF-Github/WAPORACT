@@ -110,6 +110,11 @@ def output_table(
     Return:
         int: 0    
     """
+    # create output subfolders as needed
+    output_dir = os.path.dirname(output_file_path) 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     pd_processes = {'.csv': pd.DataFrame.to_csv, '.xlsx': pd.DataFrame.to_excel,
         '.pkl': pd.DataFrame.to_pickle, '.json': pd.DataFrame.to_json, 
         '.tex': pd.DataFrame.to_latex, '.pq': pd.DataFrame.to_parquet
@@ -136,7 +141,7 @@ def output_table(
         else:
             out_process(output_df, out_path)
     
-    return 0
+    return output_file_path
 
 ########################################################
 # Mathematical Functions
@@ -194,7 +199,7 @@ def generate_zonal_stats_column_and_function(
         statistic as well retrieving the numpy fucniton required to carry it out.
     
     Args:
-        input_name: name to sue in the column
+        input_name: name to use in the column
         statistic: statistic keyword used in the input name as well as being used to retrieve the 
         required numpy function
         waporact_files: if True assumes a standardised waporact file path has been provided for 
@@ -294,6 +299,10 @@ def calc_field_statistics(
 
     # if a csv is wanted as output transfrom as needed and create it
     if output_csv_path:
+        # create output subfolders as needed
+        output_dir = os.path.dirname(output_csv_path) 
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
         if isinstance(stats, dict):
             stats_csv = dict_to_dataframe(in_dict=stats)
         else:
@@ -612,6 +621,10 @@ def raster_count_statistics(
         categories_stats = dict_to_dataframe(in_dict=categories_list)
 
     if output_csv:
+        # create output subfolders as needed
+        output_dir = os.path.dirname(output_csv) 
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
         output_table(
             table=categories_stats,
             output_file_path=output_csv)
@@ -809,6 +822,7 @@ def calc_multiple_array_numpy_statistic(
     template_raster_path: str=None,
     output_nodata: float=-9999,
     mask_to_template: bool=False,
+    axis: int=0,
     **kwargs):
     """
     Description:
@@ -831,6 +845,10 @@ def calc_multiple_array_numpy_statistic(
         output_nodata: nodata for the output
         kwargs: keyword arguments to use in the 
         specified numpy_array function
+        axis: numpy optional argument required by multiple functions
+        to determine the axis on which to apply the function when working with 
+        multiple arrays, for stacked arrays axis=0 carries out the calculation 
+        along the z axis
         mask_to_template: If True masks to the template raster 
         and the output array will be masked to it
 
@@ -887,7 +905,11 @@ def calc_multiple_array_numpy_statistic(
     array_stack = np.stack(array_list)
 
     # calculate chosen statistic
-    output_array = numpy_function(array_stack, **kwargs)
+    try:
+        output_array = numpy_function(array_stack,axis=axis, **kwargs)
+    except:
+        print('attempt to run the function with the axis argument failed, reattempting without')
+        output_array = numpy_function(array_stack, **kwargs)
 
     # output monthly potet as raster
     raster.array_to_raster(
@@ -907,7 +929,7 @@ def calc_multiple_array_numpy_statistic(
 
     raster.check_gdal_open(output_raster_path)
 
-    return 0
+    return output_raster_path
 
 ##########################
 def mostcommonzaxis(array_stack, **kwargs):
