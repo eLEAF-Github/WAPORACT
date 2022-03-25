@@ -892,4 +892,3 @@ def build_vrt(
 
     return output_vrt_path
 
-if __name__ == "__main__":
