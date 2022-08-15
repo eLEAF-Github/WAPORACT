@@ -14,7 +14,6 @@ from timeit import default_timer
 from typing import Union
 
 import math
-from attr import field
 import fiona
 import rasterio
 from rasterio import features
@@ -22,8 +21,6 @@ from rasterio import features
 from shapely.geometry import shape
 import numpy as np
 import pandas as pd
-
-from waporact.scripts.retrieval.wapor_land_cover_classification_codes import wapor_lcc
 
 from waporact.scripts.structure.wapor_structure import WaporStructure
 
@@ -36,7 +33,14 @@ from waporact.scripts.tools import vector
 def dict_to_dataframe(
     in_dict: Union[dict, list]):
     """
-    transform dict, nested dict or list of dicts to dataframe
+    Description:
+        transform dict, nested dict or list of dicts to dataframe
+
+    Args:
+        in_dict: dict, ordered /nested dict or list
+
+    Return:
+        dataframe: input object reformatted to dataframe
     """
     temp_list = []
     
@@ -147,6 +151,19 @@ def output_table(
 # Mathematical Functions
 ########################################################
 def latlon_dist(lat1,lat2,lon1,lon2):
+    """
+    Description:
+        calculates the distance in meters from lat lon inputs
+
+    Args:
+        lat1: latitude variable from first coordinates tuple
+        lat2: latitude variable from second coordinates tuple
+        lon1: longitude variable from first coordinates tuple
+        lon2: longitude variable from second coordinates tuple
+
+    Return:
+        float: distance of lat lon in meters
+    """
 
     #radius of the earth
     R = 6373.0
@@ -170,20 +187,52 @@ def latlon_dist(lat1,lat2,lon1,lon2):
     return distance
 
 ##########################
-def ceiling_divide(a,b):
+def ceiling_divide(
+    a: float,
+    b: float,
+    cieling: float=1):
+    """
+    Description:
+        divides a value by b and if the calculated value is
+        higher than the cieling sets it to the cieling value
+
+    Args:
+        a: value
+        b: value b
+        cieling: highest possible value
+
+    Return:
+        float: calculated value
+    """
     if b == 0:
         c = np.nan
     else:
         c = a / b
-        if c > 1:
-            c = 1
+        if c > cieling:
+            c = cieling
     return c
 
 ##########################
-def floor_minus(a,b):
+def floor_minus(    
+    a: float,
+    b: float,
+    floor: float=0):
+    """
+    Description:
+        minus a value by b and if the calculated value is 
+        lower than the floor sets it to the floor value
+
+    Args:
+        a: value
+        b: value b
+        floor: lowest possible value
+
+    Return:
+        float: calculated value
+    """
     c = a - b
-    if c < 0:
-        c = 0
+    if c < floor:
+        c = floor
     return c
 
 ########################################################
@@ -191,19 +240,19 @@ def floor_minus(a,b):
 ########################################################
 def generate_zonal_stats_column_and_function(
     input_name: str,
-    statistic: str, 
+    statistic: str,
     waporact_files: bool=False):
     """
     Description:
-        generates a column name for the zonal stat calculated using a combination og the input_name and 
+        generates a column name for the zonal stat calculated using a combination og the input_name and
         statistic as well retrieving the numpy fucniton required to carry it out.
     
     Args:
         input_name: name to use in the column
-        statistic: statistic keyword used in the input name as well as being used to retrieve the 
+        statistic: statistic keyword used in the input name as well as being used to retrieve the
         required numpy function
-        waporact_files: if True assumes a standardised waporact file path has been provided for 
-        the input name and deconstructs it to provide an automatic column name 
+        waporact_files: if True assumes a standardised waporact file path has been provided for
+        the input name and deconstructs it to provide an automatic column name
 
     Return:
         tuple: column name, numpy function
@@ -237,11 +286,12 @@ def generate_zonal_stats_column_and_function(
 ########################################################
 # zonal statistics Functions
 ########################################################
-def calc_field_statistics( 
+def calc_field_statistics(
     fields_shapefile_path: str,
     input_rasters: list,
-    output_csv_path: str=None,
     field_stats: list=['min', 'max', 'mean', 'sum', 'stddev'],
+    statistic_name: str = '',
+    output_csv_path: str=None,
     id_key: str='wpid',
     out_dict: bool=False,
     waporact_files: bool=False):
@@ -252,17 +302,18 @@ def calc_field_statistics(
     Args:
         fields_shapefile_path: path to the shapefile defining the fields
         input_rasters: list of rasters/vrts to carry out zonal statistics on
-        field_stats: list of statistics to carry out, also used in the column names 
-        id_key: name of shapefile column/feature dictionary key providing the feature indices 
+        field_stats: list of statistics to carry out, also used in the column names
+        statistic_name: name/ identifier to give to the stat calculated (used in combo with each field stat calculated)
+        id_key: name of shapefile column/feature dictionary key providing the feature indices
         wpid is a reliable autogenerated index provided while making the crop mask
-        (note: also handy for joining tables and the crop mask shape/other shapes back later) 
+        (note: also handy for joining tables and the crop mask shape/other shapes back later)
         out_dict: if true outputs a dictionary instead of a dataframe
         output_csv_path: path to output the csv too if provided
-        waporact_files: if True assumes a standardised waporact file path has been provided for 
+        waporact_files: if True assumes a standardised waporact file path has been provided for
         the input name and deconstructs it to provide an automatic column name
 
     Return:
-        tuple: dataframe/dict made, path to the output csv
+        tuple: dataframe/dict made
     """
     # check if column identifier exists in the shapefile
     vector.check_column_exists(shapefile_path=fields_shapefile_path, column=id_key)
@@ -281,6 +332,7 @@ def calc_field_statistics(
         stats = multiple_raster_zonal_stats(
             input_shapefile_path=fields_shapefile_path,
             raster_path_list=input_rasters,
+            statistic_name=statistic_name,
             field_stats=field_stats,
             out_dict=out_dict,
             id_key=id_key,
@@ -291,6 +343,7 @@ def calc_field_statistics(
         stats = single_raster_zonal_stats(
             input_shapefile_path=fields_shapefile_path,
             input_raster_path=input_rasters[0],
+            statistic_name=statistic_name,
             field_stats=field_stats,
             out_dict=out_dict,
             id_key=id_key,
@@ -310,21 +363,24 @@ def calc_field_statistics(
         stats_csv.to_csv(output_csv_path, sep = ';')
         print('sep used for the csv is: ;')
 
-    return stats, output_csv_path
+        print('csv outputted too: {}'.format(output_csv_path))
+
+    return stats
 
 
 ##########################
 def multiple_raster_zonal_stats(
     input_shapefile_path: str,    
     raster_path_list: list,
-    field_stats: list,
+    field_stats: list=['min', 'max', 'mean', 'sum', 'stddev'],
+    statistic_name: str='',
     out_dict: bool=False,
     id_key: str ='wpid',
     waporact_files: bool=False): 
     """
     Description:
         rasterize the features in the shapefile according to the
-        template raster provided and extract the indices corresponding 
+        template raster provided and extract the indices corresponding
         to each feature
 
         uses the dictionary made and the input_raster_path and calculates statistics per field
@@ -332,17 +388,18 @@ def multiple_raster_zonal_stats(
 
     Args:
         input_shapefile_path: shapefile to retireve raster indices for per feature
-        id_key: name of shapefile column/feature dictionary key providing the feature indices 
+        id_key: name of shapefile column/feature dictionary key providing the feature indices
         wpid is a reliable autogenerated index provided while making the crop mask
-        (note: also handy for joining tables and the crop mask shape/other shapes back later) 
-        raster_path_list: list of paths to rasters to analyse also accepts and loops 
+        (note: also handy for joining tables and the crop mask shape/other shapes back later)
+        raster_path_list: list of paths to rasters to analyse also accepts and loops
         through vrts inside the list
-        field_stats: list of statistics to carry out, also used in the column names 
+        statistic_name: name/ identifier to give to the stat calculated (used in combo with each field stat calculated)
+        field_stats: list of statistics to carry out, also used in the column names
         out_dict: if True exports a dict instead of a dataframe
-        waporact_files: if True assumes a standardised waporact file path has been provided for 
+        waporact_files: if True assumes a standardised waporact file path has been provided for
         the input name and deconstructs it to provide an automatic column name
 
-    Return:        
+    Return:       
         dict/dataframe: dictionary or dataframe of calculated stats, with the key being the field id
     """
     # check if column identifier exists in the shapefile
@@ -363,6 +420,7 @@ def multiple_raster_zonal_stats(
         polygon_index_base_raster_path=raster_path_list[0],
         polygon_index_dict=index_dict,
         raster_path_list=raster_path_list,
+        statistic_name=statistic_name,
         field_stats=field_stats,
         out_dict=out_dict,
         id_key=id_key,
@@ -376,7 +434,8 @@ def equal_dimensions_zonal_stats(
     polygon_index_dict: dict,
     polygon_index_base_raster_path: str,
     raster_path_list: list,
-    field_stats: list,
+    field_stats: list=['min', 'max', 'mean', 'sum', 'stddev'],
+    statistic_name: str='',
     out_dict: bool=False,
     id_key: str = 'wpid', 
     waporact_files: bool=False):
@@ -387,7 +446,7 @@ def equal_dimensions_zonal_stats(
         in the raster using the index to identify the cells within each field
 
         NOTE: The bounds and resolution of the tif the polygon_index_dict
-        is based on and the raster being analysed needs to be the same. 
+        is based on and the raster being analysed needs to be the same.
         that is why you need to provide it so that it can be checked each time.
 
     Args:
@@ -396,12 +455,13 @@ def equal_dimensions_zonal_stats(
         index_dict
         raster_path_list: list of paths to rasters to analyse also accepts and loops through vrts inside
         the list
-        field_stats: list of statistics to carry out, also used in the column names 
+        statistic_name: name/ identifier to give to the stat calculated (used in combo with each field stat calculated)
+        field_stats: list of statistics to carry out, also used in the column names
         out_dict: if True exports a dict instead of a dataframe
-        id_key: name of shapefile column/feature dictionary key providing the feature indices 
+        id_key: name of shapefile column/feature dictionary key providing the feature indices
         wpid is a reliable autogenerated index provided while making the crop mask
-        (note: also handy for joining tables and the crop mask shape/other shapes back later) 
-        waporact_files: if True assumes a standardised waporact file path has been provided for 
+        (note: also handy for joining tables and the crop mask shape/other shapes back later)
+        waporact_files: if True assumes a standardised waporact file path has been provided for
         the input name and deconstructs it to provide an automatic column name
 
     Return:
@@ -422,17 +482,14 @@ def equal_dimensions_zonal_stats(
             raise AttributeError('geotransform parameters of the index_base_raster: {} and raster: {} have to match'
                 ': \n check the overlay of your input shapefile and input rasters'.format(polygon_index_base_raster_path, raster_path))
 
-        raster_name = os.path.splitext(os.path.basename(raster_path))[0]
-
         # if a vrt loop through the bands
         if 'vrt' in os.path.splitext(raster_path)[1]:
             for band in range(1, raster.gdal_info(raster_path)['band_count']):
-                band_name = raster.gdal_info(raster_path, band_num=band)['band_name']
                 array = raster.raster_to_array(raster_path, band_num=band)
                 for key, value in polygon_index_dict.items():
                     for stat in field_stats:
                         column_name, numpy_function = generate_zonal_stats_column_and_function(
-                            input_name=band_name,
+                            input_name=statistic_name,
                             statistic=stat,
                             waporact_files=waporact_files) 
                         stats[key][column_name] = numpy_function(array[value])
@@ -442,7 +499,7 @@ def equal_dimensions_zonal_stats(
             for key, value in polygon_index_dict.items():
                 for stat in field_stats:
                     column_name, numpy_function = generate_zonal_stats_column_and_function(
-                        input_name=raster_name,
+                        input_name=statistic_name,
                         statistic=stat,
                         waporact_files=waporact_files) 
                     stats[key][column_name] = numpy_function(array[value])
@@ -456,24 +513,26 @@ def equal_dimensions_zonal_stats(
 def single_raster_zonal_stats(
     input_raster_path: str,
     input_shapefile_path: str,
-    field_stats: list,
+    field_stats: list=['min', 'max', 'mean', 'sum', 'stddev'],
+    statistic_name: str='',
     id_key: str='wpid',
     out_dict: bool=False,
     waporact_files: bool=False):
     """
     Description:
-        carries out a zonal stats analysis and organises the results 
-        in a dictionary or dataframe according to the requirements 
+        carries out a zonal stats analysis and organises the results
+        in a dictionary or dataframe according to the requirements
         
     Args:
         template_raster_path: path to the raster contianing the data being analysed
         input_shapefile_path: shapefile to retrieve raster indices for per feature
-        id_key: name of shapefile column/feature dictionary key providing the feature indices 
+        id_key: name of shapefile column/feature dictionary key providing the feature indices
         wpid is a reliable autogenerated index provided while making the crop mask
-        (note: also handy for joining tables and the crop mask shape/other shapes back later) 
-        field_stats: list of statistics to carry out, also used in the column names 
+        (note: also handy for joining tables and the crop mask shape/other shapes back later)
+        statistic_name: name/ identifier to give to the stat calculated (used in combo with each field stat calculated)
+        field_stats: list of statistics to carry out, also used in the column names
         out_dict: if True exports a dict instead of a dataframe
-        waporact_files: if True assumes a standardised waporact file path has been provided for 
+        waporact_files: if True assumes a standardised waporact file path has been provided for
         the input name and deconstructs it to provide an automatic column name
 
     Return:
@@ -487,7 +546,6 @@ def single_raster_zonal_stats(
         shapefile_path=input_shapefile_path)
 
     # setup output dictionary
-    name = os.path.splitext(os.path.basename(input_raster_path))[0]
     stats = {}
 
     print('calculating all feature statistics...')
@@ -506,20 +564,20 @@ def single_raster_zonal_stats(
                     left = bbox[0],
                     bottom = bbox[1],
                     right=bbox[2],
-                    top=bbox[3], 
+                    top=bbox[3],
                     transform=src.transform)
 
-                if any(value < 0 for value in [raster_window.col_off, raster_window.row_off]): 
+                if any(value < 0 for value in [raster_window.col_off, raster_window.row_off]):
                     if raster_window.col_off < 0:
                         skipped_features[tid] = (tid,'feature col offset is negative')
                     if raster_window.row_off < 0:
                         skipped_features[tid] = (tid,'feature row offset is negative')
-                    for stat in field_stats: 
+                    for stat in field_stats:
                         column_name, __ = generate_zonal_stats_column_and_function(
-                            input_name=name,
+                            input_name=statistic_name,
                             statistic=stat,
-                            waporact_files=waporact_files) 
-                        stats[tid][column_name] = np.nan  
+                            waporact_files=waporact_files)
+                        stats[tid][column_name] = np.nan
                                 
                 else:
                     window_transform = rasterio.windows.transform(raster_window, src.transform)
@@ -558,9 +616,9 @@ def single_raster_zonal_stats(
 
                     for stat in field_stats:
                         column_name, numpy_function = generate_zonal_stats_column_and_function(
-                            input_name=name,
+                            input_name=statistic_name,
                             statistic=stat,
-                            waporact_files=waporact_files) 
+                            waporact_files=waporact_files)
                         stats[tid][column_name] = numpy_function(temp_array)
     
     if skipped_features:
@@ -585,12 +643,12 @@ def raster_count_statistics(
         and various other statistics around it for the
         the percentage of non nan cells that make up the raster
 
-        NOTE: categories_dict assumes that the dict keys are the categories 
+        NOTE: categories_dict assumes that the dict keys are the categories
         and that the values are the values
 
     Args:
         input_raster_path: input raster to check
-        categories_dict: if a dict is provided uses the dic tto assign names/categories 
+        categories_dict: if a dict is provided uses the dic tto assign names/categories
         to the values found.
         category_name: if a category dict is provided this is use dot name the new dict column made
         out_dict: if true outputs as dict otherwise as a dataframe
@@ -629,7 +687,7 @@ def raster_count_statistics(
             table=categories_stats,
             output_file_path=output_csv)
 
-    return categories_stats, output_csv 
+    return categories_stats, output_csv
 
 ########################################################
 # raster/Array statistics Functions
@@ -644,7 +702,7 @@ def calc_dual_array_statistics(
     mask_to_template: bool=False):
     """
     Description:
-    given two rasters or arrays applies the given function to them and 
+    given two rasters or arrays applies the given function to them and
     outputs the result as a new raster
     
     Args:
@@ -653,13 +711,12 @@ def calc_dual_array_statistics(
         calc_function: function to use (a / b etc)
         output_raster_path: path to output the calculated
         statistic too as a raster
-        template_raster_path: path to the template raster 
-        providing the metadata for the output raster if used, 
+        template_raster_path: path to the template raster
+        providing the metadata for the output raster if used,
         if not provided uses the input raster
         output_nodata: nodata for the output raster if used
-        mask_to_template: If True masks to the template raster 
+        mask_to_template: If True masks to the template raster
         and the output array will be masked to it
-
 
     Return:
         str: path to the output raster
@@ -733,12 +790,12 @@ def calc_single_array_numpy_statistic(
     """
     Description:
         given a raster or an array calculates a statistic for the input 
-        using the given function, if an output raster path is specified 
-        it attaches the new value to all non nan cells and 
+        using the given function, if an output raster path is specified
+        it attaches the new value to all non nan cells and
         outputs to the path otherwise it returns the computed statistic.
 
         Note: raster_to_array automatically sets the ouput nodata value to 
-        numpy.nan so that numpy functions will work correctly, if providing 
+        numpy.nan so that numpy functions will work correctly, if providing
         arrays you have to do this yourself
     
     Args:
@@ -748,7 +805,7 @@ def calc_single_array_numpy_statistic(
         output_raster_path: path to output the calculated
         statistic too as a raster if you so wish
         template_raster_path: path to the template raster 
-        providing the metadata for the output raster if used, 
+        providing the metadata for the output raster if used,
         if not provided uses the input raster
         output_nodata: nodata for the output raster if used
         kwargs: keyword arguments to use in the 
@@ -828,10 +885,10 @@ def calc_multiple_array_numpy_statistic(
     Description:
         given a a vrt or a list of 
         rasters or arrays calculates a per pixel statistic on the input(s) 
-        using the given function and on the specified axis 
+        using the given function and on the specified axis
 
         Note: raster_to_array automatically sets the ouput nodata value to 
-        numpy.nan so that numpy funcitons will work correctly, if providing 
+        numpy.nan so that numpy funcitons will work correctly, if providing
         arrays you have to do this yourself
     
     Args:
@@ -969,3 +1026,4 @@ def mostcommonzaxis(array_stack, **kwargs):
 if __name__ == "__main__":
     start = default_timer()
     args = sys.argv
+    

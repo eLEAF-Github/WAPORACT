@@ -7,34 +7,54 @@ used to automatically organise the data when running the retrieval class or exam
 """
 ##########################
 # import packages
+from logging import exception
 import os
 from datetime import datetime, timedelta
 from parse import parse
 from timeit import default_timer
-import time
 
-from numpy import str0
+
+#################################
+def check_windows_file_length(path: str):
+    """
+    Description:
+        check the length of a file path to make sure it does not exceed the windows
+        limit of 256 characters.
+
+    Args:
+        path: path to check
+
+    Return:
+        int: 0
+
+    Raise:
+        AttributeError: if the file path is too long
+    """
+    if len(path) > 255:
+        raise AttributeError('length of the file path: {}, is too long for windows. please adjust your wapor directory folder location or make some other adjustment to reduce total path length')
+
+    return 0
 
 #################################
 class WaporStructure(object):
     """
     Description:
-        samll class used to structure the waporact projects in a 
-        standard way for future use called by 
+        samll class used to structure the waporact projects in a
+        standard way for future use called by
         all other class to tools file retrieval and storage
     
     Args:
         waporact_directory: location to store the projects
         project: name of the project folder
         wapor_level: wapor_level integer to download data for either 1,2, or 3
-        period_start: datetime object specifying the start of the period 
-        period_end: datetime object specifying the end of the period 
+        period_start: datetime object specifying the start of the period
+        period_end: datetime object specifying the end of the period
         return_period: return period code of the component to be downloaded (D (Dekadal) etc.)
         country_code: country code used when running for level 3 data
 
     Return:
         provides a project and date dict that can be used to retrieve and store
-        wapor data from and in the project folders that have been setup 
+        wapor data from and in the project folders that have been setup
         in a standard way
     """
     # initiate class variables 
@@ -62,13 +82,10 @@ class WaporStructure(object):
         self.project_name = project_name
         self.waporact_directory = waporact_directory
         self.wapor_level = wapor_level
-        self.period_start = period_start 
+        self.period_start = period_start
         self.period_end = period_end
         self.return_period = return_period
         self.country_code = country_code
-        
-        assert self.wapor_level in [1,2,3] , "wapor_level (int) needs to be either 1, 2 or 3"
-        assert isinstance(self.project_name, str), 'please provide a project name'
 
         # setup the project structure dict
         project = {}
@@ -81,43 +98,105 @@ class WaporStructure(object):
         data_dir = os.path.join(project_dir, 'L{}'.format(self.wapor_level))
         
         # setup sub dirs
-        project['download'] = os.path.join(data_dir, '01_download')
-        project['processed'] = os.path.join(data_dir, '02_processed')
+        project['reference'] = os.path.join(data_dir, '00_reference')
+        project['temp'] = os.path.join(data_dir, '01_temp')
+        project['download'] = os.path.join(data_dir, '02_download')
         project['masked'] = os.path.join(data_dir, '03_masked')
         project['analysis'] = os.path.join(data_dir, '04_analysis')
         project['results'] = os.path.join(data_dir, '05_results')
-        project['reference'] = os.path.join(data_dir, '00_reference')
         project['images'] = os.path.join(data_dir, '06_images')
         #project['reports'] = os.path.join(data_dir, '08_reports')
 
         # create the required dirs if not yet existing:
-        for dir in project.values():
-            if not os.path.exists(dir):
-                os.makedirs(dir)
+        for _dir in project.values():
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
 
         # output the project dict to self
         self.project = project
 
     #################################
+    # properties
+    #################################
+    @property
+    def wapor_level(self):
+        return self._wapor_level
+
+    @wapor_level.setter
+    def wapor_level(self,value: int):
+        """
+        Description
+            checks if the wapor level is correct
+
+        Args:
+            value: wapor level to check
+
+        Raise:
+            AttributeError: If wapor level is incorrect
+        """
+        if value not in [1,2,3]:
+            raise AttributeError("wapor_level (int) needs to be either 1, 2 or 3")
+        else:
+            self._wapor_level = value
+
+    #################################
+    @property
+    def project_name(self):
+        return self._project_name
+
+    @project_name.setter
+    def project_name(self,value: int):
+        """
+        Description
+            sets the project name and checks it exists
+
+        Args:
+            value: project name
+
+        Raise:
+            AttributeError: If no name is provided or is not a string
+        """
+        if not isinstance(value, str):
+            raise AttributeError("please provide a project name as str")
+        else:
+            if value=='test':
+                print('using standard project name test')
+            
+            self._project_name = value
+
+    #################################
     @property
     def waporact_directory(self):
-        return self._project_directory
+        return self._waporact_directory
 
     @waporact_directory.setter
     def waporact_directory(self,value):
         """
-        Quick description:
-            checks for the existance of the projects dir 
+        Description:
+            checks for the existance of the waporact dir
             and creates it if it does not exist
+
+        Args:
+            value: path to the waporact directory
+
+        Return:
+            str: path to the waporact directory
+
+        Raise: 
+            AttributeError: if no value or not a string is provided
         """
         if not value:
-            raise AttributeError('please provide a projects directory')
+            raise AttributeError('please provide a waporact_directory')
         if isinstance(value, str):
             if not os.path.exists(value):
-                print('projects dir created does not exist attempting to make it now')
-                os.mkdir(value)
+                print('waporact_directory provided does not exist attempting to make it now')
+                try:
+                    os.mkdir(value)
+                except Exception as e:
+                    print('failed to make the waporact directory: {}'.format(value))
+                    raise e
 
-            self._project_directory = value
+            self._waporact_directory = value
 
         else:
             raise AttributeError
@@ -130,12 +209,18 @@ class WaporStructure(object):
     @input_folder.setter
     def input_folder(self,value):
         """
-        Quick Description:
+        Description:
             checks if the given input matches any of the folder keywords
-            and if so provides back the path to the specified folder otherwise raising an error 
+            and if so provides back the path to the specified folder otherwise raising an error
+
+        Args:
+            value: folder keyword to check
+        
+        Return:
+            str: path to the input folder matching the keyword
         """
-        if value not in ['download','processed']:
-            raise KeyError('input: input_folder must be one of [download, processed]')
+        if value not in ['temp','download']:
+            raise KeyError('input: input_folder must be one of [temp,download]')
 
         else:
             self._input_folder = self.project[value]
@@ -148,9 +233,15 @@ class WaporStructure(object):
     @output_folder.setter
     def output_folder(self,value):
         """
-        Quick Description:
+        Description:
             checks if the given input matches any of the folder keywords
-            and if so provides back the path to the specified folder otherwise raising an error 
+            and if so provides back the path to the specified folder otherwise raising an error
+
+        Args:
+            value: folder keyword to check
+        
+        Return:
+            str: path to the output folder matching the keyword
         """
         if value not in ['masked','analysis','images', 'reference', 'results']:
             raise KeyError('input: output_folder must be one of [masked, analysis, results, images, reports,reference]')
@@ -160,12 +251,24 @@ class WaporStructure(object):
 
     #################################
     def generate_dates_dict(
-        self, 
-        period_start: datetime=None, 
+        self,
+        period_start: datetime=None,
         period_end: datetime=None,
-        return_period: datetime=None):
+        return_period: str=None):
         """
-        dates dict is updatable now
+        Description:
+            generates a dictionary of date related values used by wapor retrieval to retrieve data
+            from WAPOR
+
+            NOTE: if no values are provided it uses the class defaults
+        
+        Args:
+            period_start: datetime object containg the start of the analysis period
+            period_end: datetime object containg the end of the analysis period
+            return_period: string code representing the analysis return period/interval
+
+        Return:
+            dict: dictionary of date related values
         """
         if not period_start:
             period_start = self.period_start
@@ -216,7 +319,7 @@ class WaporStructure(object):
         ):
         """
         Description:
-            create the path to a standardised folder for a wapor datacomponent for the user based on the inputs provided in the 
+            create the path to a standardised folder for a wapor datacomponent for the user based on the inputs provided in the
             class and a few remaining arguments.
 
         Args:
@@ -225,15 +328,16 @@ class WaporStructure(object):
             return_period: return period of the wapor data being downloaded
 
         """
-        self.waporact_folder = waporact_folder
-        cube_code= self.cube_code_template.format(
+        cube_code = self.cube_code_template.format(
             wapor_level=self.wapor_level,
             component=component,
             return_period=return_period)
 
-        folder_path = os.path.join(self.waporact_folder, cube_code)
+        folder_path = os.path.join(waporact_folder, cube_code)
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
+
+        check_windows_file_length(path=folder_path)
 
         return folder_path
 
@@ -242,13 +346,13 @@ class WaporStructure(object):
         self,
         description: str,
         output_folder: str,
-        mask_folder: str,
+        aoi_name: str,
         ext: str,
         period_start: datetime=None,
         period_end: datetime=None):
         """
         Description:
-            generate standardised file paths for the user based of the inputs provided in the 
+            generate standardised file paths for the user based of the inputs provided in the
             class and a few remaining arguments.
 
         Args:
@@ -256,7 +360,7 @@ class WaporStructure(object):
             description: file content one word description used in creating the file name and a subfolder
             period_start: period the analysis covers (start) (if none mainly for the mask it is set to na)
             period_end: period the analysis covers (end) (if none mainly for the mask it is set to na)
-            mask_folder: name used to make a subfolder for masked files (can be the area/crop etc)
+            aoi_name: area of interest (aoi) name to use for the mask folder auto set to nomask if not provided
             ext: ext in the file (with the .)
         
         Return:
@@ -286,21 +390,23 @@ class WaporStructure(object):
             print('\' \' found in the description, replacing with - : {}'.format(description))
 
         # check for ' ' in mask_folder and fix as needed for standardised file formating
-        if ' ' in mask_folder:
-            mask_folder = mask_folder.replace(' ', '_')
-            print('\' \' found in the mask folder name, replacing with _ : {}'.format(mask_folder))
+        if ' ' in aoi_name:
+            aoi_name = aoi_name.replace(' ', '_')
+            print('\' \' found in the aoi (mask) folder name, replacing with _ : {}'.format(aoi_name))
 
         output_filename = WaporStructure.output_filename_template.format(
-            wapor_level=self.wapor_level, 
-            description=description, 
+            wapor_level=self.wapor_level,
+            description=description,
             period_start_str=period_start_str,
             period_end_str=period_end_str)
 
-        output_folder_path = os.path.join(self.output_folder, mask_folder)
+        output_folder_path = os.path.join(self.output_folder, aoi_name)
         if not os.path.exists(output_folder_path):
             os.makedirs(output_folder_path)
 
         output_file_path = os.path.join(output_folder_path,output_filename + ext)
+
+        check_windows_file_length(path=output_file_path)
 
         return output_file_path
 
@@ -321,7 +427,7 @@ class WaporStructure(object):
         Return:
             dict: dict of deconstructed parts of the output_file_path
         """  
-        #retrieve the file name      
+        #retrieve the file name
         file_name, ext = os.path.splitext(os.path.basename(output_file_path))
 
         # desconstruct the file name
@@ -388,11 +494,11 @@ class WaporStructure(object):
         ext: str):
         """
         Description:
-            generate standardised file paths for input (downloaded) files retrieved from wapor for the user 
+            generate standardised file paths for input (downloaded) files retrieved from wapor for the user
             based of the inputs provided in the class and a few remaining arguments.
 
         Args:
-            input_folder: keyword argument used to retrieve the path to a main waporact inputs folder            
+            input_folder: keyword argument used to retrieve the path to a main waporact inputs folder
             return_period: return period of the wapor data being downloaded
             component: datacomponent being retrieved use din the folder name
             raster_id: wapor raster id
@@ -421,10 +527,11 @@ class WaporStructure(object):
             country_code_in_name = '_{}'.format(self.country_code)
             input_filename = input_filename.replace(country_code_in_name,'')
 
-        input_file_path = os.path.join(input_folder_path, input_filename + ext) 
+        input_file_path = os.path.join(input_folder_path, input_filename + ext)
+
+        check_windows_file_length(path=input_file_path)
 
         return input_file_path
-
 
     #################################
     @staticmethod
@@ -443,12 +550,12 @@ class WaporStructure(object):
         Return:
             dict: dict of deconstructed parts of the input_file_path
         """  
-        #retrieve the file name      
+        #retrieve the file name
         file_name, ext = os.path.splitext(os.path.basename(input_file_path))
 
         # deconstruct the file name
         path_dict = WaporStructure.deconstruct_input_file_name(
-            output_file_name=file_name)
+            input_file_name=file_name)
 
         path_dict['ext'] = ext
 
@@ -458,6 +565,7 @@ class WaporStructure(object):
 
         return path_dict
 
+    #################################
     @staticmethod
     def deconstruct_input_file_name(
         input_file_name:str
@@ -485,6 +593,4 @@ class WaporStructure(object):
 
 if __name__ == "__main__":
     start = default_timer()
-
-
 

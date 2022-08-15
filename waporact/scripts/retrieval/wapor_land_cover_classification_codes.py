@@ -22,16 +22,16 @@ def check_categories_exist_in_count_dict(
     Return:
         int: 0
 
-    Raise: 
+    Raise:
         KeyError: if no categories found
-    """ 
+    """
     if any(cat in count_dict.keys() for cat in categories_list):
         for cat in categories_list:
             if cat in count_dict.keys():
                 print('percentage of not nan occurrence of your category: {} in the raster'
                     ' is : {}'.format(cat, count_dict[cat]['percentage']))
             else:
-                print('the category: {} was not found in the raster: {}'.format(cat))
+                print('the category: {} was not found in the raster'.format(cat))
     else:
         print('Provided below is a dataframe of the categories that are found in the raster:')
         print(count_dict)
@@ -39,14 +39,14 @@ def check_categories_exist_in_count_dict(
 
     return 0
 
-################################# 
+#################################
 def check_categories_exist_in_categories_dict(
     categories_list: list,
     categories_dict: dict
     ):
     """
     Description:
-    check if all cateogires can be found in the cateogires_dict
+    check if all categories can be found in the cateogires_dict
 
     Args:
         categories_list: list of categories to check
@@ -58,7 +58,6 @@ def check_categories_exist_in_categories_dict(
     Raise: 
         KeyError: if cateogry not found
     """  
-    categories_dict
     # check that the categories provided exist
     all_categories = list(categories_dict.keys())
     if not all(cat in all_categories for cat in categories_list):
@@ -74,7 +73,7 @@ def dissagregate_categories(
     ):
     """
     Description:
-    simple function that takes a list of categories and replaces aggregate 
+    simple function that takes a list of categories and replaces aggregate
     categories with the ones they represent in the list
 
     NOTE: assumes structure of the categories dict give is the same as the
@@ -126,7 +125,7 @@ def wapor_lcc(wapor_level: int):
         level: WAPOR level to retrieve the table for as a dict
 
     Return:
-        dict: wapor LCC dictionary 
+        dict: wapor LCC dictionary
     """
     if wapor_level in (1,2):
         lcc_dict = {

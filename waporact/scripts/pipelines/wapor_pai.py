@@ -13,38 +13,41 @@ import numpy as np
 from datetime import datetime, timedelta
 from timeit import default_timer
 
-from typing import Union
 
-from waporact.scripts.tools import raster, statistics
-from waporact.scripts.tools.plots import interactive_choropleth_map
 from waporact.scripts.retrieval.wapor_retrieval import WaporRetrieval
+from waporact.scripts.tools import raster, statistics, vector
+from waporact.scripts.tools.plots import interactive_choropleth_map, shapeplot, rasterplot, scatterplot
 
 ##########################
 class WaporPAI(WaporRetrieval):
     """
     Description:
-        Given rasters and a shapefile calculates standardised statistics for
-        Performance Area Indicators and stores them in the specific shapefile 
+
+        Class that provides access to functions that calculate wapor
+        based  water use Performance Area Indicators (PAI).
+
+        THese functions if given rasters and a shapefile calculate
+        standardised statistics for the given PAI and stores them
         according to to the structure given in WaporStructure
 
     Args:
         wapor_directory: directory to output downloaded and processed data too
-        shapefile_path: path to the shapefile to clip downloaded data too if given 
+        shapefile_path: path to the shapefile to clip downloaded data too if given
         wapor_level: wapor wapor_level integer to download data for either 1,2, or 3
-        api_token: api token to use when downloading data 
-        project_name: name of the location to store the retrieved data  
-        period_start: datetime object specifying the start of the period 
-        period_end: datetime object specifying the end of the period 
-        return_period: return period code of the component to be donwloaded (D (Dekadal) etc.)
-        silent: boolean, if True the more general messages in the class are not printed 
-        (autoset to False)       
+        api_token: api token to use when downloading data
+        project_name: name of the location to store the retrieved data
+        period_start: datetime object specifying the start of the period
+        period_end: datetime object specifying the end of the period
+        return_period: return period code of the component to be downloaded (D (Dekadal) etc.)
+        silent: boolean, if True the more general messages in the class are not printed
+        (autoset to False)
         )
 
-    return: 
+    return:
         Statisitics calculated on the basis of the WAPOR rasters retrieved stored in
         a shapefile, other mediums to come)
     """
-    def __init__(        
+    def __init__(  
         self,
         waporact_directory: str,
         shapefile_path: str,
@@ -78,21 +81,15 @@ class WaporPAI(WaporRetrieval):
 
 
     ########################################################
-    # Sub Dataframe functions
-    ########################################################
-
-
-    ########################################################
-    # Sub Raster functions
+    # Sub functions
     ########################################################
     def retrieve_and_analyse_period_of_wapor_rasters(
-        self, 
+        self,
         datacomponent: str,
         numpy_function: FunctionType,
         mask_raster_path: str,
-        mask_folder: str,
-        statistic: str, 
-        retrieval_list: dict=None,       
+        aoi_name: str,
+        statistic: str,     
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = None,
@@ -100,32 +97,30 @@ class WaporPAI(WaporRetrieval):
         """
         Description:
             retrieve and analyse a set of rasters
-            from the wapor database for a given period using 
-            a specific numpy statistic and if you want 
+            from the wapor database for a given period using
+            a specific numpy statistic and if you want
             mask to an area.
 
-            useful for producing seasonal or annual sum or average 
+            useful for producing seasonal or annual sum or average
             rasters for AETI or transpiration etc
 
         Args:
             self: (see class for details)
             period_start: start of the season in datetime
             period_end: end of the season in datetime
-            return_period: return period to retrieve data for, 
+            return_period: return period to retrieve data for,
             auto set to monthly
             datacomponent: wapor datacomponent to retrieve and analyse
-            numpy_function: numpy function being called/ used to analyse the 
+            numpy_function: numpy function being called/ used to analyse the
             set of rasters retrieved
-            statistic: statistics being calculated used in the  output name, 
-            should be related to the numpy funciton being used
-            mask_folder: name to use for the mask folder auto set to nomask if not provided
+            statistic: statistics being calculated used in the  output name,
+            should be related to the numpy function being used
+            aoi_name: area of interest (aoi) name to use for the mask folder auto set to nomask if not provided
             mask_raster_path: path to the crop mask defining the area for analysis
             output_nodata: nodata value to use on output
-            retrieval_list: if you provide a retrieval list produced by 
-            retrieve_wapor_download_info you can skip the preceding steps.
         
         Return:
-            str: path to the produced raster     
+            str: path to the produced raster
         """
         if not period_start:
             period_start=self.period_start
@@ -134,51 +129,27 @@ class WaporPAI(WaporRetrieval):
         if not return_period:
             return_period = self.return_period
 
-        if not retrieval_list:
-            output_raster_path =self.structure.generate_output_file_path(
-                description='{}-{}'.format(datacomponent, statistic),
-                period_start=period_start,
-                period_end=period_end,
-                output_folder='analysis',
-                mask_folder=mask_folder,
-                ext='.tif'   
-            )
-
-        else:
-            # create standardised file name from retrieval list                
-            period_start = sorted([d['period_start'] for d in retrieval_list])[0]
-            period_end = sorted([d['period_end'] for d in retrieval_list])[-1]
-
-            output_raster_path = self.structure.generate_output_file_path(
-                description='{}_{}'.format(datacomponent, statistic),
-                period_start=period_start,
-                period_end=period_end,
-                output_folder='analysis',
-                mask_folder=mask_folder,
-                ext='.tif'   
+        output_raster_path =self.generate_output_file_path(
+            description='{}-{}'.format(datacomponent, statistic),
+            period_start=period_start,
+            period_end=period_end,
+            output_folder='analysis',
+            aoi_name=aoi_name,
+            ext='.tif'
             )
 
         if not os.path.exists(output_raster_path):
-            if not retrieval_list:
-                print('retrieving {} data between {} and {} for masked data: {}'.format(
-                    datacomponent, period_start, period_end, mask_folder))
+            print('retrieving {} data between {} and {} for aoi (mask): {}'.format(
+                datacomponent, period_start, period_end, aoi_name))
 
-                # retrieve the download info
-                retrieval_info = self.retrieve_wapor_download_info(
+            retrieved_data = self.download_wapor_rasters(
+                    datacomponents=[datacomponent],
                     period_start=period_start,
                     period_end=period_end,
                     return_period=return_period,
-                    datacomponents=[datacomponent],
-                    mask_folder=mask_folder)
-
-            else:           
-                retrieval_info = retrieval_list
-            
-            # download the rasters
-            retrieved_data = self.retrieve_wapor_rasters(
-                wapor_download_list=retrieval_info,
-                template_raster_path=mask_raster_path,
-                mask_folder=mask_folder)
+                    aoi_name=aoi_name,
+                    template_raster_path=mask_raster_path
+                    )
 
             # calculate the aggregate raster using the specified numpy statistical function
             if len(retrieved_data[datacomponent]['raster_list']) > 1:
@@ -202,15 +173,15 @@ class WaporPAI(WaporRetrieval):
 
     ##########################
     def calc_potential_raster(
-        self, 
+        self,
         input_raster_path: str,
         percentile: int,
         mask_raster_path: str,
         output_nodata:float=-9999):
         """
         Description:
-            calculate a potential raster by selecting the 95% percentile 
-            value within the input raster and assigning it to 
+            calculate a potential raster by selecting the 95% percentile
+            value within the input raster and assigning it to
             all cells. Requires a mask to identify which cells to include in the analysis
 
         Args:
@@ -218,23 +189,23 @@ class WaporPAI(WaporRetrieval):
             evapotranspiration_raster_path: path to the evapotranspiration raster
             percentile: percentile to choose as the potential value
             mask_raster_path: path to the raster mask defining the area for analysis if provided
-            mask_folder: name to use for the mask folder auto set to nomask if not provided
+            aoi_name: area of interest (aoi) name to use for the mask folder auto set to nomask if not provided
             output_nodata: nodata value to use on output
         
         Return:
             str: path to the potential raster
         """
     	# create standardised filename
-        file_parts = self.structure.deconstruct_output_file_path(
+        file_parts = self.deconstruct_output_file_path(
             output_file_path=input_raster_path
         )
 
-        potential_raster_path = self.structure.generate_output_file_path(
+        potential_raster_path = self.generate_output_file_path(
             description='{}-pot'.format(file_parts['description']),
             period_start=file_parts['period_start'],
             period_end=file_parts['period_end'],
             output_folder='analysis',
-            mask_folder=file_parts['mask_folder'],
+            aoi_name=file_parts['mask_folder'],
             ext='.tif'
         )
 
@@ -253,18 +224,169 @@ class WaporPAI(WaporRetrieval):
 
         return potential_raster_path
 
-    ########################################################
-    # Main Raster functions
-    ########################################################
+
+    ##########################
+    def create_pai_csv_and_plots(
+        self,
+        input_raster_path: str,
+        mask_raster_path: str,
+        file_description: str,
+        title: str,
+        fields_shapefile_path: str=None,
+        z_label: str=None,
+        z_column: str=None,
+        field_stats: list = ['mean'],
+        period_start: datetime=None,
+        period_end: datetime=None,
+        aoi_name: str = None,
+        id_key: str= 'wpid',
+        zmin:float=None,
+        zmax:float=None,
+        output_static_map: bool=True,
+        output_interactive_map: bool=True,
+        output_csv: bool=True):
+        """
+        Description:
+            subfunction to create visualisations in a standard way for the different pai's
+
+        Args:
+            self: (see class for details)
+            input_raster_path: path to the raster to plot
+            and calculate field statistics from
+            file_description: name for the files made, used in combo with standard parts
+            (ret, cwd, mean ret etc)
+            title: title of the plots made, used in combo with standard parts
+            (relative evapotranspiration etc)
+            z_label: label for the colour bar,
+            z_column: name of the column in the csv to plot
+            period_start: start of the season in datetime
+            period_end: end of the season in datetime
+            mask_raster_path: path to the raster mask defining the area for analysis if provided
+            aoi_name: area of interest (aoi) name to use for the mask folder auto set to nomask if not provided
+            output_nodata: nodata value to use on output
+            field_stats: list of statistics to carry out during the field level analysis,
+            also used in the column names
+            fields_shapefile_path: if the path to the fields shapefile path is provided
+            then the field level statistics are also calculated
+            id_key: name of shapefile column/feature dictionary key providing the feature indices
+            zmin: minimum value on the z axis, autoset based on available values if not provided
+            zmax: minimum value on the z axis, autoset based on available values if not provided
+            output_static_map: if true outputs a static map
+            output_interactive_map: if true outputs a interactive map
+            output_csv:if true outputs a csv and shape plot file to a standardised location
+            
+        Return:
+            dict: field statistics calculated
+        """
+        if output_static_map:
+            # if true create and output a static raster map and shape map
+            rasterplot_filepath = self.generate_output_file_path(
+                description=file_description,
+                period_start=period_start,
+                period_end=period_end,
+                output_folder='images',
+                aoi_name=aoi_name,
+                ext='.png',
+            )
+
+            rasterplot(
+                input_value_raster_path=input_raster_path,
+                output_plot_path=rasterplot_filepath,
+                input_mask_raster_path=mask_raster_path,
+                zmin=zmin,
+                zmax=zmax,
+                title=title,
+            )
+
+            print('{} raster plot made: {}'.format(title, rasterplot_filepath))
+
+        if fields_shapefile_path:
+            print('Calculating {} field statistics...'.format(file_description))
+            
+            field_stats_dict = statistics.calc_field_statistics(
+                fields_shapefile_path=fields_shapefile_path,
+                input_rasters=[input_raster_path],
+                field_stats=field_stats,
+                statistic_name=file_description,
+                id_key=id_key,
+                out_dict=True,
+                waporact_files=True)
+
+            print('{} field statistics calculated'.format (title))
+
+            if output_interactive_map or output_csv:
+                # if true output the results to a csv and use it to create an interactive map if applicable
+                csv_filepath = self.generate_output_file_path(
+                    description=file_description,
+                    period_start=period_start,
+                    period_end=period_end,
+                    output_folder='results',
+                    aoi_name=aoi_name,
+                    ext='.csv',
+                )
+
+                statistics.output_table(field_stats_dict, output_file_path=csv_filepath)
+
+                print('{} csv made: {}'.format(title, csv_filepath))
+
+                shapeplot_filepath = self.generate_output_file_path(
+                    description='{}_fields'.format(file_description),
+                    period_start=period_start,
+                    period_end=period_end,
+                    output_folder='images',
+                    aoi_name=aoi_name,
+                    ext='.png',
+                )
+
+                shapeplot(
+                    input_shape_path=fields_shapefile_path,
+                    output_plot_path=shapeplot_filepath,
+                    title=title,
+                    z_column=z_column,
+                    zmin=zmin,
+                    zmax=zmax,
+                    csv_path=csv_filepath,
+                    join_column=id_key)
+
+                print('{} field plot made: {}'.format(title, shapeplot_filepath))
+
+                if output_interactive_map:
+                    # if true create and output an interactive map
+                    shapeplot_html = self.generate_output_file_path(
+                        description=file_description,
+                        period_start=period_start,
+                        period_end=period_end,
+                        output_folder='images',
+                        aoi_name=aoi_name,
+                        ext='.html',
+                    )
+                    
+                    interactive_choropleth_map(
+                        input_shapefile_path=fields_shapefile_path,
+                        input_csv_path=csv_filepath,
+                        z_column=z_column,
+                        z_label=z_label,
+                        zmin=zmin,
+                        zmax=zmax,
+                        output_html_path=shapeplot_html,
+                    )
+
+                    print('{} interactive plot made: {}'.format(title, shapeplot_html))
+    
+        else:
+            field_stats_dict = None
+            print('no field shapefile provided so no field level statistics, field plot, interactive plot or csv could be made for: {}'.format(file_description))
+
+        return field_stats_dict
 
 
     ########################################################
-    # Performance Indicators Raster functions
+    # Performance Indicators functions
     ########################################################
     def calc_relative_evapotranspiration(
-        self, 
+        self,
         mask_raster_path: str,
-        mask_folder: str,   
+        aoi_name: str,
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = None,
@@ -273,11 +395,13 @@ class WaporPAI(WaporRetrieval):
         fields_shapefile_path: str=None,
         field_stats: list = ['mean'],
         id_key: str= 'wpid',
-        out_dict: bool=False,
+        output_static_map: bool=True,
+        output_interactive_map: bool=True,
+        output_csv: bool=True
         ):
         """
         Description:
-            calculate the relative evapotranspiration score to test for adequacy 
+            calculate the relative evapotranspiration score to test for adequacy
             per cell for the given period and area as defined by the class shapefile
 
             relative evapotranspiration: Sum of Evapotranspiration / Potential evapotranspiration
@@ -286,25 +410,28 @@ class WaporPAI(WaporRetrieval):
             self: (see class for details)
             period_start: start of the season in datetime
             period_end: end of the season in datetime
-            return_period: return period to retrieve data for, 
+            return_period: return period to retrieve data for,
             auto set to monthly
             mask_raster_path: path to the raster mask defining the area for analysis if provided
-            mask_folder: name to use for the mask folder auto set to nomask if not provided
-            percentile: percentile of evapotranspiration values to choose as the 
+            aoi_name: area of interest (aoi) name to use for the mask folder auto set to nomask if not provided
+            percentile: percentile of evapotranspiration values to choose as the
             potential evapotranspiration value
             output_nodata: nodata value to use on output
             fields_shapefile_path: if the path to the fields shapefile path is provided
             then the field level statistics are also calculated
-            field_stats: list of statistics to carry out during the field level analysis, 
-            also used in the column names  
-            id_key: name of shapefile column/feature dictionary key providing the feature indices 
+            field_stats: list of statistics to carry out during the field level analysis,
+            also used in the column names
+            id_key: name of shapefile column/feature dictionary key providing the feature indices
             wpid is a reliable autogenerated index provided while making the mask
-            (note: also handy for joining tables and the mask shape/other shapes back later) 
-            out_dict: if true outputs a dictionary instead of a shapefile and does not
-            write to csv.
+            (note: also handy for joining tables and the mask shape/other shapes back later)
+            output_static_map: if true outputs a static map
+            output_interactive_map: if true outputs a interactive map
+            output_csv:if true outputs a csv and shape plot file to a standardised location
+
+
 
         Return:
-            tuple: path to the relative evapotranspiration raster,  (dataframe/dict, csv of field statistics)
+            tuple: path to the relative evapotranspiration raster, dict of field statistics
         """        
         if not period_start:
             period_start=self.period_start
@@ -314,12 +441,12 @@ class WaporPAI(WaporRetrieval):
             return_period = self.return_period
 
         # create standardised relative evapotranspiration file name
-        relative_evapotranspiration_raster_path = self.structure.generate_output_file_path(
+        relative_evapotranspiration_raster_path = self.generate_output_file_path(
             description='ret',
             period_start=period_start,
             period_end=period_end,
             output_folder='results',
-            mask_folder=mask_folder,
+            aoi_name=aoi_name,
             ext='.tif',
         )
        
@@ -331,7 +458,7 @@ class WaporPAI(WaporRetrieval):
                     datacomponent= 'AETI',
                     numpy_function=np.nansum,
                     mask_raster_path=mask_raster_path,
-                    mask_folder=mask_folder,
+                    aoi_name=aoi_name,
                     statistic='sum',
                     return_period=return_period,
                     output_nodata=output_nodata)  
@@ -344,7 +471,7 @@ class WaporPAI(WaporRetrieval):
                 output_nodata=output_nodata)
 
             # calculate relative evapotranspiration for the given period (AETI/POTET)
-            statistics.calc_dual_array_statistics( 
+            statistics.calc_dual_array_statistics(
                 a=evapotranspiration,
                 b=potential_evapotranspiration,
                 calc_function=statistics.ceiling_divide,
@@ -357,151 +484,191 @@ class WaporPAI(WaporRetrieval):
         
         else:
             print('Previously created relative evapotranspiration raster found: ret (Adequacy PAI)')
-            
-        if fields_shapefile_path:
-            print('Calculating ret field statistics...')
 
-            ret_csv_filepath = self.structure.generate_output_file_path(
-                description='ret',
-                period_start=period_start,
-                period_end=period_end,
-                output_folder='results',
-                mask_folder=mask_folder,
-                ext='.csv',
-            )
-            
-            ret_field_stats = statistics.calc_field_statistics(
-                fields_shapefile_path=fields_shapefile_path,
-                input_rasters=[relative_evapotranspiration_raster_path],
-                output_csv_path=ret_csv_filepath,
-                field_stats=field_stats,
-                id_key=id_key,
-                out_dict=out_dict,
-                waporact_files=True)
-
-            print('Relative evapotranspiration field statistics calculated: ret (Adequacy PAI)')
-
-        else:
-            ret_field_stats = None
+        # create and output applicable visuaisations and the field stats
+        ret_field_stats = self.create_pai_csv_and_plots(
+            input_raster_path=relative_evapotranspiration_raster_path,
+            mask_raster_path=mask_raster_path,
+            file_description='ret',
+            title='relative evapotranspiration (adequacy indicator)',
+            fields_shapefile_path=fields_shapefile_path,
+            z_label='mean_ret',
+            z_column='mean_ret',
+            field_stats=field_stats,
+            aoi_name=aoi_name,
+            id_key=id_key,
+            zmin=0, 
+            zmax=1, 
+            period_start=period_start,
+            period_end=period_end,
+            output_static_map=output_static_map,
+            output_interactive_map=output_interactive_map,
+            output_csv=output_csv)
 
         return (relative_evapotranspiration_raster_path, ret_field_stats)
     
     ########################################################
     def calc_temporal_variation_of_relative_evapotranspiration(
-        self, 
+        self,
         mask_raster_path: str,
-        mask_folder: str,    
+        fields_shapefile_path: str,
+        aoi_name: str,
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = 'D',
         percentile: int = 95,
         output_nodata:float = -9999,
-        fields_shapefile_path: str=None,
         field_stats: list = ['mean'],
-        id_key: str= 'wpid',
-        out_dict: bool=False,
+        id_key: str= 'wpid'
         ):
         """
         Description:
-            calculate the relative evapotranspiration score per dekad for the given period to test for reliability 
-            per cell for the given period and area as defined by the class shapefile 
+            calculate the relative evapotranspiration score per dekad for the 
+            given period to test for reliability
+            per cell for the given period and area as 
+            defined by the class shapefile
 
-            temporal relative evapotranspiration: Sum of Evapotranspiration / Potential evapotranspiration per dekad as a time series
+            temporal relative evapotranspiration: 
+                Sum of Evapotranspiration / Potential evapotranspiration per dekad as a time series
 
-            tret = mean ret
+            NOTE: Field shapefile is required
 
         Args:
-            self: (see class for details) 
+            self: (see class for details)
             period_start: start of the season in datetime
             period_end: end of the season in datetime
             return_period: return period to retrieve data for
             autoset to dekad
             mask_raster_path: path to the raster mask defining the area for analysis if provided
-            mask_folder: name to use for the mask folder auto set to nomask if not provided
-            percentile: percentile of evapotranspiration values to choose as the 
+            aoi_name: area of interest (aoi) name to use for the mask folder auto set to nomask if not provided
+            percentile: percentile of evapotranspiration values to choose as the
             potential evapotranspiration value
             output_nodata: nodata value to use on output
-            fields_shapefile_path: if the path to the fields shapefile_path is provided
-            then the field level statistics are also calculated            
-            field_stats: list of statistics to carry out during the field level analysis, 
-            also used in the column names 
-            id_key: name of shapefile column/feature dictionary key providing the feature indices 
+            fields_shapefile_path: path to the fields shapefile used to calcuate field level statistics
+            to make the time series graph
+            field_stats: list of statistics to carry out during the field level analysis,
+            also used in the column names
+            id_key: name of shapefile column/feature dictionary key providing the feature indices
             wpid is a reliable autogenerated index provided while making the crop mask
-            (note: also handy for joining tables and the crop mask shape/other shapes back later) 
-            out_dict: if true outputs a dictionary instead of a shapefile and does not
-            write to csv.
+            (note: also handy for joining tables and the crop mask shape/other shapes back later)
 
         Return:
-            tuple: (path to the temporal variation in relative evapotranspiration raster, path to the vrt), (dataframe/dict, csv of field statistics)
-        """        
+            tuple: path to the temporal variation in relative evapotranspiration raster, dict of field statistics
+        """
         if not period_start:
             period_start=self.period_start
         if not period_end:
             period_end = self.period_end
 
         # create standardised temporal relative evapotranspiration file name
-        temporal_relative_evapotranspiration_raster_path = self.structure.generate_output_file_path(
+        temporal_relative_evapotranspiration_vrt_path = self.generate_output_file_path(
             description='tret',
             period_start=period_start,
             period_end=period_end,
             output_folder='results',
-            mask_folder=mask_folder,
-            ext='.tif',
-        )
-
-        temporal_relative_evapotranspiration_vrt_path = self.structure.generate_output_file_path(
-            description='tret',
-            period_start=period_start,
-            period_end=period_end,
-            output_folder='results',
-            mask_folder=mask_folder,
+            aoi_name=aoi_name,
             ext='.vrt',
         )
+
+        # if true output the results to a csv and use it to create an interactive map if applicable
+        tret_csv_filepath = self.generate_output_file_path(
+            description='tret',
+            period_start=period_start,
+            period_end=period_end,
+            output_folder='results',
+            aoi_name=aoi_name,
+            ext='.csv',
+        )
       
-        if not any(os.path.exists(file) for file in [temporal_relative_evapotranspiration_raster_path, temporal_relative_evapotranspiration_vrt_path]):
+        if not any(os.path.exists(file) for file in [temporal_relative_evapotranspiration_vrt_path,tret_csv_filepath]):
             # retrieve all available dekadal data for the period
 
-            # retrieve the download info
-            retrieval_info = self.retrieve_wapor_download_info(
+            # setup download to be carried out per year depending on the requested dates
+            date_tuples = self.wapor_organise_request_dates_per_year(
                 period_start=period_start,
                 period_end=period_end,
-                datacomponents=['AETI'])
+                return_period=return_period
+            )
+
+            # setup download variables
+            num_of_downloads = len(date_tuples)
+            current_download = 1
+
+            print('attempting to download raster data for {} periods'.format(num_of_downloads))
+
+            retrieval_info_list = []
+            for dt in date_tuples:
+                print('downloading raster download info for time period: {} to {}, period {} out of {}'.format(dt[0],dt[1], current_download, num_of_downloads))
+                # retrieve the download info
+                retrieval_info = self.retrieve_wapor_download_info(
+                    datacomponents=['AETI'],
+                    period_start=dt[0],
+                    period_end=dt[1],
+                    return_period=return_period,
+                    aoi_name=aoi_name)
+
+                retrieval_info_list.extend(retrieval_info)
+
+                current_download +=1
 
             print("calculating {} sets of relative evapotranspiration".format(len(retrieval_info)))
-            output_rasters = []
+            ret_rasters_list = []
+            aeti_rasters_list = []
+            field_stats_dicts = []
+            date_list = []
+            period_steps = 1
 
-            for retrieval_dict in retrieval_info:
-                # create standardised relative evapotranspiration file name            
-                relative_evapotranspiration_raster_path = self.structure.generate_output_file_path(
+            for retrieval_dict in retrieval_info_list:
+                # create standardised relative evapotranspiration file name
+                relative_evapotranspiration_raster_path = self.generate_output_file_path(
                     description='ret',
                     period_start=retrieval_dict['period_start'],
                     period_end=retrieval_dict['period_end'],
                     output_folder='analysis',
-                    mask_folder=mask_folder,
+                    aoi_name=aoi_name,
                     ext='.tif',
                 )
 
-                # retrieve and calculate sum of evapotranspiration for the given period
-                evapotranspiration = self.retrieve_and_analyse_period_of_wapor_rasters(
-                        datacomponent= 'AETI',
-                        numpy_function=np.nansum,
-                        mask_raster_path=mask_raster_path,
-                        mask_folder=mask_folder,
-                        statistic='sum',
-                        retrieval_list=[retrieval_dict],
-                        return_period=return_period,
-                        output_nodata=output_nodata)  
+                # retrieve and calculate periodic evapotranspiration for the given period
+                # download the rasters
+                retrieved_data = self.retrieve_actual_wapor_rasters(
+                    wapor_download_list=[retrieval_dict],
+                    template_raster_path=mask_raster_path,
+                    aoi_name=aoi_name)
 
-                # calculate potential evapotranspiration for the given period
-                potential_evapotranspiration = self.calc_potential_raster(
-                    input_raster_path=evapotranspiration,
-                    percentile=percentile,
-                    mask_raster_path=mask_raster_path,
-                    output_nodata=output_nodata)
+                aeti_rasters_list.append(retrieved_data['AETI']['raster_list'][0])
 
+                date_list.append(str(retrieval_dict['period_start'].strftime('%Y-%m-%d')))
+
+            # calculate the max actual evapotranspiration scored throughout the period using the specified numpy statistical function
+            highest_actual_evapotranspiration = self.generate_output_file_path(
+                description='max_aeti',
+                period_start=period_start,
+                period_end=period_end,
+                output_folder='analysis',
+                aoi_name=aoi_name,
+                ext='.tif')
+
+            statistics.calc_multiple_array_numpy_statistic(
+                input=aeti_rasters_list,
+                numpy_function=np.nanmax,
+                template_raster_path=mask_raster_path,
+                output_raster_path=highest_actual_evapotranspiration,
+                axis=0,
+                output_nodata=output_nodata,
+                mask_to_template=True)
+
+            # calculate potential evapotranspiration for the given period
+            potential_evapotranspiration = self.calc_potential_raster(
+                input_raster_path=highest_actual_evapotranspiration,
+                percentile=percentile,
+                mask_raster_path=mask_raster_path,
+                output_nodata=output_nodata)
+
+            for aeti_raster, date_string in zip(aeti_rasters_list,date_list):
                 # calculate relative evapotranspiration for the given period (AETI/POTET)
-                statistics.calc_dual_array_statistics( 
-                    a=evapotranspiration,
+                statistics.calc_dual_array_statistics(
+                    a=aeti_raster,
                     b=potential_evapotranspiration,
                     calc_function=statistics.ceiling_divide,
                     output_raster_path=relative_evapotranspiration_raster_path,
@@ -509,63 +676,99 @@ class WaporPAI(WaporRetrieval):
                     output_nodata=output_nodata,
                     mask_to_template=True)
 
-                output_rasters.append(relative_evapotranspiration_raster_path)
+                ret_rasters_list.append(relative_evapotranspiration_raster_path)
+
+                temporary_field_stats_dict = statistics.calc_field_statistics(
+                    fields_shapefile_path=fields_shapefile_path,
+                    input_rasters=[relative_evapotranspiration_raster_path],
+                    field_stats=field_stats,
+                    statistic_name='ret_{}'.format(date_string),
+                    id_key=id_key,
+                    out_dict=True,
+                    waporact_files=True)
+
+                field_stats_dicts.append(temporary_field_stats_dict)
+
+                period_steps +=1
+
+            print('periodic relative evapotranspiration raster(s) calculated for measuring temporal variation')
 
             raster.build_vrt(
-                raster_list=output_rasters,
+                raster_list=ret_rasters_list,
                 output_vrt_path=temporal_relative_evapotranspiration_vrt_path,
                 action='time'
-            )
+                )
 
-            statistics.calc_multiple_array_numpy_statistic(
-                        input=temporal_relative_evapotranspiration_vrt_path,
-                        numpy_function=np.nanmean,
-                        template_raster_path=mask_raster_path,
-                        output_raster_path=temporal_relative_evapotranspiration_raster_path,
-                        axis=0,
-                        output_nodata=output_nodata,
-                        mask_to_template=True)
+            # merge dictionary of dictionaries using id_key as the join key
+            combined_dict = field_stats_dicts[0].copy()
+            for base_dict_entry in combined_dict.keys():
+                for _dict in field_stats_dicts:
+                    for dict_entry in _dict.keys():
+                        if _dict[dict_entry][id_key] == combined_dict[base_dict_entry][id_key]:
+                            for key in list(_dict[dict_entry].keys()):
+                                if key in combined_dict[base_dict_entry].keys():
+                                    pass
+                                else:
+                                    combined_dict[base_dict_entry][key] = _dict[dict_entry][key]
+                    
+            # reformat for scatterplot with x y z variables
+            plotting_dict = {}
+            counter = 1
+            for id_ in list(combined_dict.keys()): #id keys
+                for date_string in date_list:
+                    plotting_dict[counter] = {
+                        'wpid': str(id_),
+                        'time_step': date_string,
+                        'mean_ret': combined_dict[id_]['mean_ret_{}'.format(date_string)]
+                    }
+                    counter +=1
 
-            # add average to calculate relaibility (average adequacy)
+            statistics.output_table(plotting_dict, output_file_path=tret_csv_filepath)
 
-            print('Temporal variation in relative evapotranspiration raster(s) calculated: tret (Reliability PAI)')
+            print('Temporal variation in relative evapotranspiration outputted to csv: {}'.format(tret_csv_filepath))
 
         else:
-            print('Previously created temporal variation in relative evapotranspiration raster(s) found: tret (Reliability PAI)')
+            print('Previously created periodic relative evapotranspiration raster(s) found')
 
-        if fields_shapefile_path:
-            print('Calculating tret field statistics...')
-
-            tret_csv_filepath = self.structure.generate_output_file_path(
+        scatterplot_html = self.generate_output_file_path(
                 description='tret',
                 period_start=period_start,
                 period_end=period_end,
-                output_folder='results',
-                mask_folder=mask_folder,
-                ext='.csv',
+                output_folder='images',
+                aoi_name=aoi_name,
+                ext='.html',
             )
 
-            tret_field_stats = statistics.calc_field_statistics(
-                fields_shapefile_path=fields_shapefile_path,
-                input_rasters=[temporal_relative_evapotranspiration_raster_path, temporal_relative_evapotranspiration_vrt_path],
-                output_csv_path=tret_csv_filepath,
-                field_stats=field_stats,
-                id_key=id_key,
-                out_dict=out_dict,
-                waporact_files=True)
+        scatterplot_png = self.generate_output_file_path(
+                description='tret',
+                period_start=period_start,
+                period_end=period_end,
+                output_folder='images',
+                aoi_name=aoi_name,
+                ext='.png',
+            )
 
-            print('Temporal variation in relative evapotranspiration field statistics calculated: tret (Reliability PAI)')
-        
-        else:
-            tret_field_stats = None
+        scatterplot(
+            input_table=tret_csv_filepath,
+            x='time_step',
+            y='mean_ret',
+            title='Temporal variation in relative evapotranspiration: {} - {}'.format(period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')),
+            x_label ='time_steps: {}'.format(return_period),
+            y_label='mean_ret',
+            color='wpid',
+            output_html_path=scatterplot_html,
+            output_png_path=scatterplot_png)
 
-        return ((temporal_relative_evapotranspiration_raster_path, temporal_relative_evapotranspiration_vrt_path), tret_field_stats)
+        print('Temporal variation in relative scatterplot made and outputted to html: {}'.format(scatterplot_html))
+        print('Temporal variation in relative scatterplot made and outputted to png: {}'.format(scatterplot_png))
+     
+        return (temporal_relative_evapotranspiration_vrt_path, None)
 
     ##########################
     def calc_crop_water_deficit(
-        self, 
+        self,
         mask_raster_path: str,
-        mask_folder: str,     
+        aoi_name: str,
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = None,
@@ -574,10 +777,12 @@ class WaporPAI(WaporRetrieval):
         fields_shapefile_path: str=None,
         field_stats: list = ['mean'],
         id_key: str= 'wpid',
-        out_dict: bool=False):
+        output_static_map: bool=True,
+        output_interactive_map: bool=True,
+        output_csv: bool=True):
         """
         Description:
-            calculate the crop water deficit score per cell to test for adequacy 
+            calculate the crop water deficit score per cell to test for adequacy
             for the given period and area as defined by the class shapefile
 
             crop_water_deficit: Potential evapotranspiration - Sum of Evapotranspiration
@@ -586,26 +791,27 @@ class WaporPAI(WaporRetrieval):
             self: (see class for details)
             period_start: start of the season in datetime
             period_end: end of the season in datetime
-            return_period: return period to retrieve data for, 
+            return_period: return period to retrieve data for,
             auto set to monthly
             mask_raster_path: path to the raster mask defining the area for analysis if provided
-            mask_folder: name to use for the mask folder auto set to nomask if not provided
-            percentile: percentile of evapotranspiration values to choose as the 
+            aoi_name: area of interest (aoi) name to use for the mask folder auto set to nomask if not provided
+            percentile: percentile of evapotranspiration values to choose as the
             potential evapotranspiration value
             output_nodata: nodata value to use on output
             fields_shapefile_path: if the path to the fields shapefile_path is provided
-            then the field level statistics are also calculated           
-            field_stats: list of statistics to carry out during the field level analysis, 
-            also used in the column names 
-            id_key: name of shapefile column/feature dictionary key providing the feature indices 
+            then the field level statistics are also calculated
+            field_stats: list of statistics to carry out during the field level analysis,
+            also used in the column names
+            id_key: name of shapefile column/feature dictionary key providing the feature indices
             wpid is a reliable autogenerated index provided while making the crop mask
-            (note: also handy for joining tables and the crop mask shape/other shapes back later) 
-            out_dict: if true outputs a dictionary instead of a shapefile and does not
-            write to csv.
+            (note: also handy for joining tables and the crop mask shape/other shapes back later)
+            output_static_map: if true outputs a static map
+            output_interactive_map: if true outputs a interactive map
+            output_csv:if true outputs a csv and shape plot file to a standardised location
 
         Return:
-            tuple: path to the crop_water_deficit raster,  (dataframe/dict, csv of field statistics)
-        """        
+            tuple: path to the crop_water_deficit raster,  dict of field stats
+        """
         if not period_start:
             period_start=self.period_start
         if not period_end:
@@ -614,12 +820,12 @@ class WaporPAI(WaporRetrieval):
             return_period = self.return_period
 
         # create standardised crop_water_deficit file name
-        crop_water_deficit_raster_path = self.structure.generate_output_file_path(
+        crop_water_deficit_raster_path = self.generate_output_file_path(
             description='cwd',
             period_start=period_start,
             period_end=period_end,
             output_folder='results',
-            mask_folder=mask_folder,
+            aoi_name=aoi_name,
             ext='.tif',
             )
         
@@ -631,7 +837,7 @@ class WaporPAI(WaporRetrieval):
                     datacomponent= 'AETI',
                     numpy_function=np.nansum,
                     mask_raster_path=mask_raster_path,
-                    mask_folder=mask_folder,
+                    aoi_name=aoi_name,
                     statistic='sum',
                     return_period=return_period,
                     output_nodata=output_nodata)  
@@ -645,7 +851,7 @@ class WaporPAI(WaporRetrieval):
 
             
             # calculate crop_water_deficit for the given period (AETI/POTET)
-            statistics.calc_dual_array_statistics( 
+            statistics.calc_dual_array_statistics(
                 a=potential_evapotranspiration,
                 b=evapotranspiration,
                 calc_function=statistics.floor_minus,
@@ -659,39 +865,31 @@ class WaporPAI(WaporRetrieval):
         else:
             print('Previously created crop water deficit raster found: cwd (Adequacy PAI)')
 
-        if fields_shapefile_path:
-            print('Calculating cwd field statistics...')
-            
-            cwd_csv_filepath = self.structure.generate_output_file_path(
-                description='cwd',
-                period_start=period_start,
-                period_end=period_end,
-                output_folder='results',
-                mask_folder=mask_folder,
-                ext='.csv',
-            )
-
-            cwd_field_stats = statistics.calc_field_statistics(
-                fields_shapefile_path=fields_shapefile_path,
-                input_rasters=[crop_water_deficit_raster_path],
-                output_csv_path=cwd_csv_filepath,
-                field_stats=field_stats,
-                id_key=id_key,
-                out_dict=out_dict,
-                waporact_files=True)
-
-            print('Crop water deficit field statistics calculated: cwd (Adequacy PAI)')
-        
-        else:
-            cwd_field_stats = None
+        # create and output applicable visuaisations and the field stats
+        cwd_field_stats = self.create_pai_csv_and_plots(
+            input_raster_path=crop_water_deficit_raster_path,
+            mask_raster_path=mask_raster_path,
+            file_description='cwd',
+            title='crop water deficit (adequacy indicator)',
+            fields_shapefile_path=fields_shapefile_path,
+            z_label='mean_cwd',
+            z_column='mean_cwd',
+            field_stats=field_stats,
+            aoi_name=aoi_name,
+            id_key=id_key,
+            period_start=period_start,
+            period_end=period_end,
+            output_static_map=output_static_map,
+            output_interactive_map=output_interactive_map,
+            output_csv=output_csv)
 
         return (crop_water_deficit_raster_path, cwd_field_stats)
 
     ##########################
     def calc_beneficial_fraction(
-        self, 
+        self,
         mask_raster_path: str,
-        mask_folder: str,
+        aoi_name: str,
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = None,
@@ -699,51 +897,55 @@ class WaporPAI(WaporRetrieval):
         fields_shapefile_path: str=None,
         field_stats: list = ['mean'],
         id_key: str= 'wpid',
-        out_dict: bool=False,):
+        output_static_map: bool=True,
+        output_interactive_map: bool=True,
+        output_csv: bool=True):
         """
         Description:
-            calculate an beneficial fraction score per cell to test for effeciency 
+            calculate an beneficial fraction score per cell to test for effeciency
             for the given period and area as defined by the class shapefile
 
-            beneficial fraction: Sum of Transpiration  / Sum of Evapotranspiration
+            beneficial fraction: Sum of Transpiration / Sum of Evapotranspiration
 
         Args:
             self: (see class for details)
             period_start: start of the season in datetime
             period_end: end of the season in datetime
-            return_period: return period to retrieve data for, 
+            return_period: return period to retrieve data for,
             auto set to monthly
             mask_raster_path: path to the raster mask defining the area for analysis if provided
-            mask_folder: name to use for the mask folder auto set to nomask if not provided
+            aoi_name: area of interest (aoi) name to use for the mask folder auto set to nomask if not provided
             output_nodata: nodata value to use on output
             fields_shapefile_path: if the path to the fields shapefile_path is provided
-            then the field level statistics are also calculated           
-            field_stats: list of statistics to carry out during the field level analysis, 
-            also used in the column names 
-            id_key: name of shapefile column/feature dictionary key providing the feature indices 
+            then the field level statistics are also calculated
+            field_stats: list of statistics to carry out during the field level analysis,
+            also used in the column names
+            id_key: name of shapefile column/feature dictionary key providing the feature indices
             wpid is a reliable autogenerated index provided while making the crop mask
-            (note: also handy for joining tables and the crop mask shape/other shapes back later) 
-            out_dict: if true outputs a dictionary instead of a shapefile and does not
-            write to csv.
+            (note: also handy for joining tables and the crop mask shape/other shapes back later)
+            output_static_map: if true outputs a static map
+            output_interactive_map: if true outputs a interactive map
+            output_csv:if true outputs a csv and shape plot file to a standardised location
+
+
 
         Return:
             tuple: path to the beneficial fraction raster, (dataframe/dict, csv of field statistics)
-        """    
+        """
         if not period_start:
             period_start=self.period_start
         if not period_end:
             period_end = self.period_end
         if not return_period:
             return_period = self.return_period
-        
 
         # create standardised beneficial fraction file name
-        beneficial_fraction_raster_path = self.structure.generate_output_file_path(
+        beneficial_fraction_raster_path = self.generate_output_file_path(
             description='bf',
             period_start=period_start,
             period_end=period_end,
             output_folder='results',
-            mask_folder=mask_folder,
+            aoi_name=aoi_name,
             ext='.tif',
             )
 
@@ -755,7 +957,7 @@ class WaporPAI(WaporRetrieval):
                     datacomponent= 'AETI',
                     numpy_function=np.nansum,
                     mask_raster_path=mask_raster_path,
-                    mask_folder=mask_folder,
+                    aoi_name=aoi_name,
                     statistic='sum',
                     return_period=return_period,
                     output_nodata=output_nodata)  
@@ -767,10 +969,10 @@ class WaporPAI(WaporRetrieval):
                     datacomponent= 'T',
                     numpy_function=np.nansum,
                     mask_raster_path=mask_raster_path,
-                    mask_folder=mask_folder,
+                    aoi_name=aoi_name,
                     statistic='sum',
                     return_period=return_period,
-                    output_nodata=output_nodata)  
+                    output_nodata=output_nodata)
   
             # calculate beneficial_fraction for the given period (AETI/POTET)
             statistics.calc_dual_array_statistics( 
@@ -787,54 +989,47 @@ class WaporPAI(WaporRetrieval):
         else:
             print('Previously created beneficial fraction raster found: bf (Effeciency PAI)')
 
-        if fields_shapefile_path:
-            print('Calculating Beneficial Fraction field statistics...')
-            
-            bf_csv_filepath = self.structure.generate_output_file_path(
-                description='bf',
-                period_start=period_start,
-                period_end=period_end,
-                output_folder='results',
-                mask_folder=mask_folder,
-                ext='.csv',
-            )       
-            bf_field_stats = statistics.calc_field_statistics(
-                fields_shapefile_path=fields_shapefile_path,
-                input_rasters=[beneficial_fraction_raster_path],
-                output_csv_path=bf_csv_filepath,
-                field_stats=field_stats,
-                id_key=id_key,
-                out_dict=out_dict,
-                waporact_files=True)
-
-            print('Beneficial fraction field stats calculated: bf (Effeciency PAI)')
-
-        else:
-            bf_field_stats = None
+        # create and output applicable visuaisations and the field stats
+        bf_field_stats = self.create_pai_csv_and_plots(
+            input_raster_path=beneficial_fraction_raster_path,
+            mask_raster_path=mask_raster_path,
+            file_description='bf',
+            title='beneficial fraction (effeciency indicator)',
+            fields_shapefile_path=fields_shapefile_path,
+            z_label='mean_bf',
+            z_column='mean_bf',
+            field_stats=field_stats,
+            aoi_name=aoi_name,
+            id_key=id_key,
+            zmin=0,
+            zmax=1,
+            period_start=period_start,
+            period_end=period_end,
+            output_static_map=output_static_map,
+            output_interactive_map=output_interactive_map,
+            output_csv=output_csv)
 
         return (beneficial_fraction_raster_path, bf_field_stats)
 
     ##########################
-    # CV is a field calculation not pixel based needs a new location 
-    # pretty sure this one is wrong currently but the method safi describes is field based lets see if this temporal pixel based version has worth
     def calc_coefficient_of_variation(
-        self, 
+        self,
         mask_raster_path: str,
-        mask_folder: str,
+        aoi_name: str,
         fields_shapefile_path: str,
         field_stats: list = ['mean', 'stddev'],
         id_key: str= 'wpid',
-        out_dict: bool=False,
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = None,
-        output_nodata:float = -9999):
+        output_nodata:float = -9999,
+        output_interactive_map: bool=True):
         """
         Description:
             calculate a coefficient of variation score per field for the given period
             testing for equity in the area as defined by the class shapefile
 
-            cov is a special pefromance indicator in that there is no raster equivalent
+            NOTE: cov is a special perfromance indicator in that there is no raster equivalent
 
             equity: standard deviation of summed Evapotranspiration per field / 
             mean of summed evapotranspiration per field
@@ -843,26 +1038,25 @@ class WaporPAI(WaporRetrieval):
             self: (see class for details)
             period_start: start of the season in datetime
             period_end: end of the season in datetime
-            return_period: return period to retrieve data for, 
+            return_period: return period to retrieve data for,
             auto set to monthly
             mask_raster_path: path to the raster mask defining the area for analysis if provided
-            mask_folder: name to use for the mask folder auto set to nomask if not provided
-            percentile: percentile of evapotranspiration values to choose as the 
+            aoi_name: area of interest (aoi) name to use for the mask folder auto set to nomask if not provided
+            percentile: percentile of evapotranspiration values to choose as the
             potential evapotranspiration value
             output_nodata: nodata value to use on output
             fields_shapefile_path: required as cov is a field based statistic, used
-            to calculate the field level statistics are also calculated           
-            field_stats: list of statistics to carry out during the field level analysis, 
-            also used in the column names 
-            id_key: name of shapefile column/feature dictionary key providing the feature indices 
+            to calculate the field level statistics are also calculated
+            field_stats: list of statistics to carry out during the field level analysis,
+            also used in the column names
+            id_key: name of shapefile column/feature dictionary key providing the feature indices
             wpid is a reliable autogenerated index provided while making the crop mask
-            (note: also handy for joining tables and the crop mask shape/other shapes back later) 
-            out_dict: if true outputs a dictionary instead of a shapefile and does not
-            write to csv.
+            (note: also handy for joining tables and the crop mask shape/other shapes back later)
+            output_interactive_map: if true outputs a interactive map
 
         Return:
-            tuple: None ,  (dataframe/dict, csv of field statistics)
-        """    
+            tuple: None ,  dict
+        """
         if not period_start:
             period_start=self.period_start
         if not period_end:
@@ -870,16 +1064,6 @@ class WaporPAI(WaporRetrieval):
         if not return_period:
             return_period = self.return_period
 
-        # create standardised coeffecient of variation file name
-        cov_csv_filepath = self.structure.generate_output_file_path(
-            description='cov',
-            period_start=period_start,
-            period_end=period_end,
-            output_folder='results',
-            mask_folder=mask_folder,
-            ext='.csv',
-            )
-      
         # retrieve and calculate average of evapotranspiration for the given period
         sum_evapotranspiration_raster_path = self.retrieve_and_analyse_period_of_wapor_rasters(
                 period_start=period_start,
@@ -887,10 +1071,10 @@ class WaporPAI(WaporRetrieval):
                 datacomponent= 'AETI',
                 numpy_function=np.nansum,
                 mask_raster_path=mask_raster_path,
-                mask_folder=mask_folder,
+                aoi_name=aoi_name,
                 statistic='sum',
                 return_period=return_period,
-                output_nodata=output_nodata)  
+                output_nodata=output_nodata)
 
         print('Calculating cov field statistics...')
 
@@ -898,59 +1082,106 @@ class WaporPAI(WaporRetrieval):
             if stat not in field_stats:
                 field_stats.append(stat)
 
-        cov_dict = statistics.calc_field_statistics(
+        cov_field_stats = statistics.calc_field_statistics(
             fields_shapefile_path=fields_shapefile_path,
             input_rasters=[sum_evapotranspiration_raster_path],
             field_stats=field_stats,
+            statistic_name='cov',
             id_key=id_key,
             out_dict=True,
-            waporact_files=True)[0]
+            waporact_files=True)
 
         # calculate Coefficient of Variation
-        for key in cov_dict.keys():
-            mean_keys = [key for key in list(cov_dict[key].keys()) if 'mean' in key]
+        for key in cov_field_stats.keys():
+            mean_keys = [key for key in list(cov_field_stats[key].keys()) if 'mean' in key]
             if len(mean_keys) > 1:
                 raise AttributeError('should not be more than one mean calculated')
             else:
                 mean_key = mean_keys[0]
-            stddev_keys = [key for key in list(cov_dict[key].keys()) if 'stddev' in key]
+            stddev_keys = [key for key in list(cov_field_stats[key].keys()) if 'stddev' in key]
             if len(stddev_keys) > 1:
                 raise AttributeError('should not be more than one stddev calculated')
             else:
                 stddev_key = stddev_keys[0]
 
-            if cov_dict[key][mean_key]== 0:
-                cov_dict[key]['cov'] = np.nan
+            if cov_field_stats[key][mean_key]== 0:
+                cov_field_stats[key]['cov'] = np.nan
             else:
-                cov_dict[key]['cov'] = cov_dict[key][stddev_key] / cov_dict[key][mean_key]
+                cov_field_stats[key]['cov'] = cov_field_stats[key][stddev_key] / cov_field_stats[key][mean_key]
 
-        if not out_dict:
-            cov_field_stats = statistics.dict_to_dataframe(in_dict=cov_dict)
-            statistics.output_table(
-                table=cov_field_stats, 
-                output_file_path=cov_csv_filepath)
+        csv_filepath = self.generate_output_file_path(
+            description='cov',
+            period_start=period_start,
+            period_end=period_end,
+            output_folder='results',
+            aoi_name=aoi_name,
+            ext='.csv',
+        )
 
-        else:
-            cov_field_stats = cov_dict
-            cov_csv_filepath = None
-        
-        print('Coefficient of Variation field stats calculated: cov (Equity PAI)')
+        statistics.output_table(cov_field_stats, output_file_path=csv_filepath)
 
-        return (None, (cov_field_stats, cov_csv_filepath))
+        print('Coefficient of Variation csv made: {}'.format(csv_filepath))
+
+        shapeplot_filepath = self.generate_output_file_path(
+            description='cov_fields',
+            period_start=period_start,
+            period_end=period_end,
+            output_folder='images',
+            aoi_name=aoi_name,
+            ext='.png',
+        )
+
+        shapeplot(
+            input_shape_path=fields_shapefile_path,
+            output_plot_path=shapeplot_filepath,
+            title='Coefficient of Variation (Equity PAI)',
+            z_column='cov',
+            zmin=0,
+            zmax=0.25,
+            csv_path=csv_filepath,
+            join_column=id_key)
+
+        print('Coefficient of Variation (Equity PAI) field plot made: {}'.format(shapeplot_filepath))
+
+        if output_interactive_map:
+            # if true create and output an interactive map
+            shapeplot_html = self.generate_output_file_path(
+                description='cov_fields',
+                period_start=period_start,
+                period_end=period_end,
+                output_folder='images',
+                aoi_name=aoi_name,
+                ext='.html',
+            )
+            
+            interactive_choropleth_map(
+                input_shapefile_path=fields_shapefile_path,
+                input_csv_path=csv_filepath,
+                z_column='cov',
+                z_label='cov',
+                zmin=0,
+                zmax=0.25,
+                output_html_path=shapeplot_html,
+            )
+
+            print('Coefficient of Variation (Equity PAI) interactive plot made: {}'.format(shapeplot_html))
+
+        return (None, cov_field_stats)
 
     ##########################
     def calc_wapor_performance_indicators(
-        self, 
+        self,
         mask_raster_path: str,
         fields_shapefile_path: str,
-        mask_folder: str,
+        aoi_name: str,
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = None,
         output_nodata:float = -9999,
-        field_stats: list = ['mean'],
         id_key: str= 'wpid',
-        out_dict: bool=False):
+        output_static_map: bool=True,
+        output_interactive_map: bool=True,
+        output_csv: bool=True):
         """
         Description:
             calculate all available performance indicators per cell to test for adequacy, effeciency
@@ -968,24 +1199,25 @@ class WaporPAI(WaporRetrieval):
             self: (see class for details)
             period_start: start of the season in datetime
             period_end: end of the season in datetime
-            return_period: return period to retrieve data for, 
+            return_period: return period to retrieve data for,
             auto set to monthly
             mask_raster_path: path to the raster mask defining the area for analysis if provided
-            mask_folder: name to use for the mask folder auto set to nomask if not provided
+            aoi_name: area of interest (aoi) name to use for the mask folder auto set to nomask if not provided
             output_nodata: nodata value to use on output
             fields_shapefile_path: if the path to the fields shapefile_path is provided
-            then the field level statistics are also calculated           
-            field_stats: list of statistics to carry out during the field level analysis, 
-            also used in the column names 
-            id_key: name of shapefile column/feature dictionary key providing the feature indices 
+            then the field level statistics are also calculated
+            field_stats: list of statistics to carry out during the field level analysis,
+            also used in the column names
+            id_key: name of shapefile column/feature dictionary key providing the feature indices
             wpid is a reliable autogenerated index provided while making the crop mask
-            (note: also handy for joining tables and the crop mask shape/other shapes back later) 
-            out_dict: if true outputs a dictionary instead of a shapefile and does not
-            write to csv.
-        
+            (note: also handy for joining tables and the crop mask shape/other shapes back later)
+            output_static_map: if true outputs a static map
+            output_interactive_map: if true outputs a interactive map
+            output_csv:if true outputs a csv and shape plot file to a standardised location
+
         Return:
-            tuple: list of paths to the performance indicator rasters,  (dataframe/dict, csv of field statistics)
-        """    
+            tuple: list of paths to the performance indicator rasters,  csv of combined pai field statistics
+        """
         if not period_start:
             period_start=self.period_start
         if not period_end:
@@ -993,145 +1225,141 @@ class WaporPAI(WaporRetrieval):
         if not return_period:
             return_period = self.return_period
 
-        # create standardised performance indicator stats file name
-        pai_csv_filepath = self.structure.generate_output_file_path(
-            description='pai',
-            period_start=period_start,
-            period_end=period_end,
-            output_folder='results',
-            mask_folder=mask_folder,
-            ext='.csv',
-        )
-
-        # create standardised performance indicator html file name
-        pai_html_filepath = self.structure.generate_output_file_path(
-            description='pai',
-            period_start=period_start,
-            period_end=period_end,
-            output_folder='images',
-            mask_folder=mask_folder,
-            ext='.html',
-        )
-        
         pai_rasters = []
 
+        pai_dicts = []
+
         # calculate beneficial fraction
-        bf_outputs = self.calc_beneficial_fraction( 
+        bf_outputs = self.calc_beneficial_fraction(
             mask_raster_path=mask_raster_path,
-            mask_folder=mask_folder,
+            fields_shapefile_path=fields_shapefile_path,
+            aoi_name=aoi_name,
             period_start=period_start,
             period_end=period_end,
             return_period=return_period,
-            output_nodata=output_nodata)
+            output_nodata=output_nodata,
+            id_key=id_key,
+            output_static_map=output_static_map,
+            output_interactive_map=output_interactive_map,
+            output_csv=output_csv
+            )
 
         pai_rasters.append(bf_outputs[0])
+        pai_dicts.append(bf_outputs[1])
 
         # calculate crop water deficit
         cwd_outputs = self.calc_crop_water_deficit( 
             mask_raster_path=mask_raster_path,
-            mask_folder=mask_folder,
+            fields_shapefile_path=fields_shapefile_path,
+            aoi_name=aoi_name,
             period_start=period_start,
             period_end=period_end,
             return_period=return_period,
-            output_nodata=output_nodata)
+            output_nodata=output_nodata,
+            id_key=id_key,
+            output_static_map=output_static_map,
+            output_interactive_map=output_interactive_map,
+            output_csv=output_csv)
 
         pai_rasters.append(cwd_outputs[0])
+        pai_dicts.append(cwd_outputs[1])
 
         # calculate relative evapotranspiration
         ret_outputs = self.calc_relative_evapotranspiration( 
             mask_raster_path=mask_raster_path,
-            mask_folder=mask_folder,
+            fields_shapefile_path=fields_shapefile_path,
+            aoi_name=aoi_name,
             period_start=period_start,
             period_end=period_end,
             return_period=return_period,
-            output_nodata=output_nodata)
+            output_nodata=output_nodata,
+            id_key=id_key,
+            output_static_map=output_static_map,
+            output_interactive_map=output_interactive_map,
+            output_csv=output_csv)
 
         pai_rasters.append(ret_outputs[0])
+        pai_dicts.append(ret_outputs[1])
 
         # calculate temporal_variation_of_relative_evapotranspiration
-        tret_outputs = self.calc_temporal_variation_of_relative_evapotranspiration( 
+        tret_outputs = self.calc_temporal_variation_of_relative_evapotranspiration(
             mask_raster_path=mask_raster_path,
-            mask_folder=mask_folder,
+            fields_shapefile_path=fields_shapefile_path,
+            aoi_name=aoi_name,
             period_start=period_start,
             period_end=period_end,
             return_period=return_period,
-            output_nodata=output_nodata)
+            output_nodata=output_nodata,
+            id_key=id_key,)
 
-        pai_rasters.append(tret_outputs[0][0])
+        pai_rasters.append(tret_outputs[0])
 
-        print('All PAI rasters calculated')
+        print('All raster based PAIs calculated')
 
         if fields_shapefile_path:
             # calculate coefficient of variation
-            cov_df = self.calc_coefficient_of_variation( 
+            cov_dict = self.calc_coefficient_of_variation(
                 mask_raster_path=mask_raster_path,
                 fields_shapefile_path=fields_shapefile_path,
-                mask_folder=mask_folder,
-                field_stats=field_stats,
+                aoi_name=aoi_name,
                 period_start=period_start,
                 period_end=period_end,
                 return_period=return_period,
                 output_nodata=output_nodata,
-                out_dict=False)[1][0]
+                id_key=id_key)[1]
 
-            print('Calculating all remaining PAI field statistics...')
-
-            pai_rasters = [r for r in pai_rasters if r]
+            pai_dicts.append(cov_dict)
             
-            pai_df = statistics.calc_field_statistics(
+            print('combining and exporting all PAI field statistics to a single csv and shapefile...')
+            # create standardised performance indicator stats file name
+            pai_csv_filepath = self.generate_output_file_path(
+                description='pai',
+                period_start=period_start,
+                period_end=period_end,
+                output_folder='results',
+                aoi_name=aoi_name,
+                ext='.csv',
+            )
+
+            # merge dictionary of dictionaries using id_key as the join key
+            pai_dict = pai_dicts[0].copy()
+            for base_dict_entry in pai_dict.keys():
+                for _dict in pai_dicts:
+                    for dict_entry in _dict.keys():
+                        if _dict[dict_entry][id_key] == pai_dict[base_dict_entry][id_key]:
+                            for key in list(_dict[dict_entry].keys()):
+                                if key in pai_dict[base_dict_entry].keys():
+                                    pass
+                                else:
+                                    pai_dict[base_dict_entry][key] = _dict[dict_entry][key]
+                    
+
+            statistics.output_table(pai_dict, output_file_path=pai_csv_filepath)
+
+            print('Performance indicator field stats calculated and outputted to csv: {}'.format(pai_csv_filepath))
+
+            pai_shapefile_path = self.generate_output_file_path(
+                    description='pai',
+                    period_start=period_start,
+                    period_end=period_end,
+                    output_folder='results',
+                    aoi_name=aoi_name,
+                    ext='.shp',
+                )
+
+            vector.records_to_shapefile(
+                records=pai_dict,
+                output_shapefile_path=pai_shapefile_path,
                 fields_shapefile_path=fields_shapefile_path,
-                input_rasters=pai_rasters,
-                field_stats=field_stats,
-                id_key=id_key,
-                out_dict=True,
-                waporact_files=True)[0]
+                union_key="wpid")
 
-            # add cov to the pai_dict
-            pai_df = pai_df.merge(cov_df,left_on=id_key, right_on=id_key)
-
-            statistics.output_table(
-                table=pai_df, 
-                output_file_path=pai_csv_filepath)
-
-            if out_dict:
-                pai_field_stats = pai_df.to_dict()
-
-            else:
-                pai_field_stats = pai_df
-
-            pai_field_outputs = (pai_field_stats, pai_csv_filepath)
-
-            print('Performance indicator field stats calculated: PAI')
+            print('Performance indicator field stats calculated and outputted to shapefile: {}'.format(pai_shapefile_path))
 
         else:
-            pai_field_outputs = None
+            print('no field shapefile provided so no cov calculated or field stats or plots made')
 
-        secondary_hovertemplate_inputs= {
-            'mean_L3_bf_20200305_20200405':'mean_L3_bf_20200305_20200405',
-            'mean_L3_cwd_20200305_20200405':'mean_L3_cwd_20200305_20200405',
-            'mean_L3_tret_20200305_20200405': 'mean_L3_tret_20200305_20200405'
-        }
-
-        # create chloropleth output map
-        interactive_choropleth_map(
-            input_shapefile_path=fields_shapefile_path,
-            input_csv_path=pai_field_outputs[1],
-            z_column='mean_L3_ret_20200305_20200405',
-            z_label='mean_L3_ret_20200305_20200405',
-            secondary_hovertemplate_inputs=secondary_hovertemplate_inputs,
-            output_html_path=pai_html_filepath,
-            union_key=id_key)
-            
-        print('Performance indicator field stats map made: PAI')
-
-        outputs = (pai_rasters, pai_field_outputs, pai_html_filepath)
-
-        return outputs
+        return pai_rasters, pai_csv_filepath
 
 if __name__ == "__main__":
     start = default_timer()
     args = sys.argv
-
-
-
-

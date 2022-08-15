@@ -11,10 +11,8 @@ from typing import Union
 from datetime import timedelta
 from timeit import default_timer
 
-from posixpath import splitext
 import shutil
 from typing import Union
-import copy 
 
 from osgeo import gdal
 from osgeo import ogr
@@ -30,18 +28,66 @@ import math
 ########################################################
 # General Functions
 ########################################################
+def reproject_coordinates(x: float, y: float, in_proj: int, out_proj: int):
+    """
+    Description:
+        transform a set of coordinates (x and y) from one projection to another
+
+    Args:
+        x: x coordinate to transform
+        y: y coordinate to transform
+        in_proj: crs code/value to transform from
+        out_proj: crs code/value to transform to
+
+    Return:
+        tuple: transformed /p projected value x and y
+    """
+    in_crs = osr.SpatialReference()
+    in_crs.ImportFromEPSG(in_proj)
+    out_crs = osr.SpatialReference()
+    out_crs.ImportFromEPSG(out_proj)
+    
+    transf = osr.CoordinateTransformation(in_crs,out_crs)
+    x_projected, y_projected = transf.TransformPoint(x,y)[:2]
+
+    return x_projected, y_projected
+
+#################################
+def reproject_extent(extent: list, in_proj: int, out_proj: int):
+    """
+    Description:
+        transform/ reproject an extent from one projection to another
+        uses reproject_coordinates
+
+        fromat of the extent: [xmin,ymin, xmax,ymax]
+    Args:
+        extent: extent to transform (list or tuple)
+        inproj: crs code/value to transform from
+        outptoj: crs code/value to transform to
+
+    Return:
+        tuple: transformed extent
+    """
+    xmin_projected, ymin_projected = reproject_coordinates(x=extent[0],y=extent[1],in_proj=in_proj,out_proj=out_proj)
+    xmax_projected, ymax_projected = reproject_coordinates(x=extent[2],y=extent[3],in_proj=in_proj,out_proj=out_proj)
+
+    return (xmin_projected, ymin_projected,xmax_projected, ymax_projected)
+
+#################################
 def area_of_latlon_pixel(pixel_size, center_lat):
-    """Calculate m^2 area of a wgs84 square pixel.
+    """
+    Description:
+        Calculate m^2 area of a wgs84 square pixel.
 
-    Copied from: https://gis.stackexchange.com/a/127327/2397
+        Copied from: https://gis.stackexchange.com/a/127327/2397
 
-    Parameters:
+    Args:
         pixel_size (float): length of side of pixel in degrees.
         center_lat (float): latitude of the center of the pixel. Note this
             value +/- half the `pixel-size` must not exceed 90/-90 degrees
             latitude or an invalid area will be calculated.
 
-    Returns:
+    Return:
         Area of square pixel of side length `pixel_size` centered at
         `center_lat` in m^2.
 
@@ -59,6 +105,7 @@ def area_of_latlon_pixel(pixel_size, center_lat):
                 math.sin(math.radians(f)) / (zp*zm)))
     return pixel_size / 360. * (area_list[0] - area_list[1])
 
+#################################
 def check_gdal_open(
         file: str,
         return_ds: bool = False):
@@ -190,7 +237,7 @@ def check_dimensions(
     raster_path_b: str):
     """
     Description:
-        checks the dimension of the two given rasters to 
+        checks the dimension of the two given rasters to
         make sure they match including crs
 
     Args:
@@ -213,9 +260,9 @@ def check_dimensions(
         (a_meta['xmax'] , b_meta['xmax']),
         (a_meta['ymin'] , b_meta['ymin']),
         (a_meta['xres'] , b_meta['xres']),
-        (a_meta['yres'] , b_meta['yres']), 
-        (a_meta['xsize'] , b_meta['xsize']), 
-        (a_meta['ysize'] , b_meta['ysize']))): 
+        (a_meta['yres'] , b_meta['yres']),
+        (a_meta['xsize'] , b_meta['xsize']),
+        (a_meta['ysize'] , b_meta['ysize']))):
 
         match=False
 
@@ -320,12 +367,13 @@ def array_to_raster(
     output_crs: int= None,
     output_nodata: float = None,
     output_gdal_data_type: int = None,
-    creation_options: list=["TILED=YES", "COMPRESS=DEFLATE"],
+    creation_options: list=["TILED=YES", "COMPRESS=LZW"],
     driver_format: str ='GTiff') -> str:
     """
     Description:
         output an input array as a raster using another raster as template
         metadata source (template must have the same dimensions as the input array)
+        
     Args:
         metadata: can either be the path to the template raster
         containing the metadata needed to transform the raster
@@ -350,7 +398,7 @@ def array_to_raster(
     Return:
         str: path to the ouputted raster
     """
-        # create output subfolders as needed
+    # create output subfolders as needed
     output_dir = os.path.dirname(output_raster_path) 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -696,7 +744,7 @@ def mask_raster(
         Raster diemnsions have to match
 
     Args:
-        mask_raster_path: path to the mask raster 
+        mask_raster_path: path to the mask raster
         input_raster_path: path to the raster to mask
         output_raster_path: path to output the masked raster too, can be the same as the input path
         output_nodata: output no data value
@@ -738,7 +786,7 @@ def match_raster(
     resample_method: str = 'near',
     output_crs: int = None,
     output_nodata: float = -9999,
-    creation_options: list=["TILED=YES", "COMPRESS=DEFLATE"]):
+    creation_options: list=["TILED=YES", "COMPRESS=LZW"]):
     """
     Description:
         matches the input raster to the metadata of the match
@@ -791,9 +839,9 @@ def match_raster(
         (template_meta['xmax'] , input_meta['xmax']),
         (template_meta['ymin'] , input_meta['ymin']),
         (template_meta['xres'] , input_meta['xres']),
-        (template_meta['yres'] , input_meta['yres']), 
-        (template_meta['xsize'] , input_meta['xsize']), 
-        (template_meta['ysize'] , input_meta['ysize']))): 
+        (template_meta['yres'] , input_meta['yres']),
+        (template_meta['xsize'] , input_meta['xsize']),
+        (template_meta['ysize'] , input_meta['ysize']))):
 
         output_crs =  "EPSG:{}".format(output_crs)
         input_crs =  "EPSG:{}".format(input_meta['crs'])
@@ -807,8 +855,8 @@ def match_raster(
             dstSRS=output_crs,
             srcNodata=input_meta['nodata'],
             dstNodata=output_nodata,
-            width=template_meta['xsize'],
-            height=template_meta['ysize'],
+            xRes=template_meta['xres'],
+            yRes=template_meta['yres'],
             outputBounds=template_meta['ogr_extent'],
             outputBoundsSRS=bounds_crs,
             resampleAlg=resample_method,
@@ -841,7 +889,7 @@ def match_raster(
 ############################
 def build_vrt(
     raster_list: list, 
-    output_vrt_path: str, 
+    output_vrt_path: str,
     action: str='space'):
     """
     Description:
@@ -876,13 +924,9 @@ def build_vrt(
 
     out_vrt = gdal.BuildVRT(
         destName=output_vrt_path,
-        srcDSOrSrcDSTab=raster_list, 
+        srcDSOrSrcDSTab=raster_list,
         options=vrt_options,
         overwrite=True)
-        
-    # integrate creation options with vrt options
-    
-    out_vrt = None
 
     check_gdal_open(output_vrt_path)
 
@@ -892,3 +936,7 @@ def build_vrt(
 
     return output_vrt_path
 
+if __name__ == "__main__":
+    #start = default_timer()
+    #args = sys.argv
+    
