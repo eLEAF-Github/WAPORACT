@@ -44,6 +44,26 @@ For further details see the [wiki](https://github.com/eLEAF-Github/WAPORACT/wiki
 - all functions producing a file now return the output file name not just success 0
 - in a function where a file is produced auto directory existance and build if missing added
 
+
+#### 0.2.1 2022/8/15
+
+- WaporRetrieval class rewrite to inherit from WaporStructure instead of WaporAPI (improves use and logic)
+- WaporRetrieval class rewrite of code to improve user friendliness and debugging, more subfunctions added
+- WaporRetrieval class rewrite of donwload process to organise/ group them by year. limits downloads to a 
+  max of 36 per group (36 dekads in a year) 
+- plots script updated and completed, including improving all existing plots and adding static plots
+- WaporPAI script and class updated to include plotting 
+- WaporPAI script and class fixed temporal relative evapotranspiration function (was incorrect previously)
+- WaporPAI script and class updated to improve user friendliness and debugging, more subfunctions added
+- All scripts updated and cleaned, missing docstrings added where found
+- mask_folder argument replaced with aoi_name (area of interest name) in all places as it is more legible/ user friendly
+- Add option to set compression for output raster, default set to: LZW compression
+- Add error message for maximum characters reached in automated folder path (255, due to windows)
+- changed folder names of 01_download -> 01_temp,  02_processed -> 02_download (there was confusion amongst users , 
+  names changed to make it more legible/user friendly)
+
+NOTE: multiple developments coming this week
+
 ## In Development 
 
 - install tutorial video
@@ -53,8 +73,6 @@ For further details see the [wiki](https://github.com/eLEAF-Github/WAPORACT/wiki
 - running tutorial 2A video
 - correction of shapefile in QGIS prior to running tutorial video
 - review and release of first pipeline notebook for pai's
-- addition of visualisations to the wapor_pai.py pipeline
-- functions to create static maps in plots.py
 - automated reporting functionality
 - crop yield factor pipeline and notebook
 
