@@ -240,8 +240,7 @@ def floor_minus(
 ########################################################
 def generate_zonal_stats_column_and_function(
     input_name: str,
-    statistic: str,
-    waporact_files: bool=False):
+    statistic: str):
     """
     Description:
         generates a column name for the zonal stat calculated using a combination og the input_name and
@@ -251,17 +250,15 @@ def generate_zonal_stats_column_and_function(
         input_name: name to use in the column
         statistic: statistic keyword used in the input name as well as being used to retrieve the
         required numpy function
-        waporact_files: if True assumes a standardised waporact file path has been provided for
-        the input name and deconstructs it to provide an automatic column name
 
     Return:
         tuple: column name, numpy function
     """
     # assign all numpy functions to a dict for use
     numpy_dict = {'sum': np.nansum, 'mean': np.nanmean, 'count': np.count_nonzero, 'stddev': np.nanstd, 
-    'min': np.nanmin, 'max': np.nanmax, 'median': np.nanmedian, 
-    'percentile': np.nanpercentile, 'variance': np.nanvar, 'quantile': np.nanquantile, 
-    'cumsum': np.nancumsum, 'product': np.nanprod,'cumproduct': np.nancumprod }
+        'min': np.nanmin, 'max': np.nanmax, 'median': np.nanmedian, 
+        'percentile': np.nanpercentile, 'variance': np.nanvar, 'quantile': np.nanquantile,
+        'cumsum': np.nancumsum, 'product': np.nanprod,'cumproduct': np.nancumprod }
 
     # generate numpy function
     if statistic not in numpy_dict.keys():
@@ -271,15 +268,7 @@ def generate_zonal_stats_column_and_function(
         numpy_function = numpy_dict[statistic]
 
     # generate column name
-    if waporact_files:
-        try:
-            name_dict = WaporStructure.deconstruct_output_file_name(input_name)
-            column_name = statistic + '_' + name_dict['description'] + '_' + name_dict['period_start_str'] + '_' + name_dict['period_end_str']
-        except:
-            name_dict = WaporStructure.deconstruct_input_file_name(input_name)
-            column_name = statistic + '_' + name_dict['raster_id']
-    else:
-        column_name = statistic + '_' + input_name
+    column_name = statistic + '_' + input_name
     
     return column_name, numpy_function
 
@@ -313,7 +302,7 @@ def calc_field_statistics(
         the input name and deconstructs it to provide an automatic column name
 
     Return:
-        tuple: dataframe/dict made
+        dataframe/dict: dataframe or dict made
     """
     # check if column identifier exists in the shapefile
     vector.check_column_exists(shapefile_path=fields_shapefile_path, column=id_key)
@@ -376,7 +365,7 @@ def multiple_raster_zonal_stats(
     statistic_name: str='',
     out_dict: bool=False,
     id_key: str ='wpid',
-    waporact_files: bool=False): 
+    waporact_files: bool=False):
     """
     Description:
         rasterize the features in the shapefile according to the
@@ -437,8 +426,7 @@ def equal_dimensions_zonal_stats(
     field_stats: list=['min', 'max', 'mean', 'sum', 'stddev'],
     statistic_name: str='',
     out_dict: bool=False,
-    id_key: str = 'wpid', 
-    waporact_files: bool=False):
+    id_key: str = 'wpid'):
     """
     Description:
         takes a dictionary made using create_polygon_index_dict
@@ -489,9 +477,8 @@ def equal_dimensions_zonal_stats(
                 for key, value in polygon_index_dict.items():
                     for stat in field_stats:
                         column_name, numpy_function = generate_zonal_stats_column_and_function(
-                            input_name=statistic_name,
-                            statistic=stat,
-                            waporact_files=waporact_files) 
+                            input_name='{}_{}'.format(statistic_name,band),
+                            statistic=stat)
                         stats[key][column_name] = numpy_function(array[value])
 
         else:
@@ -499,9 +486,8 @@ def equal_dimensions_zonal_stats(
             for key, value in polygon_index_dict.items():
                 for stat in field_stats:
                     column_name, numpy_function = generate_zonal_stats_column_and_function(
-                        input_name=statistic_name,
-                        statistic=stat,
-                        waporact_files=waporact_files) 
+                        input_name='{}_{}'.format(statistic_name,band),
+                        statistic=stat)
                     stats[key][column_name] = numpy_function(array[value])
 
     if not out_dict:
@@ -575,8 +561,7 @@ def single_raster_zonal_stats(
                     for stat in field_stats:
                         column_name, __ = generate_zonal_stats_column_and_function(
                             input_name=statistic_name,
-                            statistic=stat,
-                            waporact_files=waporact_files)
+                            statistic=stat)
                         stats[tid][column_name] = np.nan
                                 
                 else:
@@ -617,8 +602,7 @@ def single_raster_zonal_stats(
                     for stat in field_stats:
                         column_name, numpy_function = generate_zonal_stats_column_and_function(
                             input_name=statistic_name,
-                            statistic=stat,
-                            waporact_files=waporact_files)
+                            statistic=stat)
                         stats[tid][column_name] = numpy_function(temp_array)
     
     if skipped_features:
@@ -883,7 +867,7 @@ def calc_multiple_array_numpy_statistic(
     **kwargs):
     """
     Description:
-        given a a vrt or a list of 
+        given a a vrt or a list of
         rasters or arrays calculates a per pixel statistic on the input(s) 
         using the given function and on the specified axis
 

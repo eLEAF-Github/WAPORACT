@@ -1,0 +1,24 @@
+name: waporact
+channels:
+  - defaults
+dependencies:
+  - python>=3.7
+  - gdal>=3.0.2
+  - pyproj>=2.6.1
+  - rasterio
+  - fiona>=1.8.13
+  - shapely==1.7.1
+  - rtree>=0.9.3
+  - numpy==1.22.4
+  - pandas>=1.1.*
+  - geopandas==0.9.0
+  - matplotlib>=3.3.*
+  - plotly
+  - python-kaleido
+  - contextily
+  - requests>=2.24.*
+  - openpyxl
+  - parse
+  - notebook>=6.1.*
+
+

@@ -17,9 +17,9 @@ from timeit import default_timer
 import time
 
 
-from ast import literal_eval
 import numpy as np
 import pandas as pd
+from ast import literal_eval
 from shapely.geometry import shape, mapping, Polygon
 import fiona
 from fiona.crs import from_epsg
@@ -37,10 +37,10 @@ from waporact.scripts.tools import raster, vector, statistics
 def printWaitBar(
     i, 
     total, 
-    prefix = '', 
-    suffix = '', 
-    decimals = 1, 
-    length = 100, 
+    prefix = '',
+    suffix = '',
+    decimals = 1,
+    length = 100,
     fill = '█'):
     """
     This function will print a waitbar in the console
@@ -83,7 +83,8 @@ class WaporRetrieval(WaporStructure):
     Description:
         Retrieves rasters from the Wapor database given the appropriate inputs
 
-        inherits the waporstructure class folder structure
+        inherits/built on the WaporStructure class which is needed for setting
+        class/ self parameters and the automated folder structure
 
     Args:
         wapor_directory: directory to output downloaded and processed data too
@@ -94,7 +95,6 @@ class WaporRetrieval(WaporStructure):
         period_start: datetime object specifying the start of the period
         period_end: datetime object specifying the end of the period
         return_period: return period code of the component to be downloaded (D (Dekadal) etc.)
-        datacomponents: wapor datacomponents (interception (I) etc.) to download
         silent: boolean, if True the more general messages in the class are not printed
         (autoset to False)
         )
@@ -108,239 +108,191 @@ class WaporRetrieval(WaporStructure):
         waporact_directory: str,
         shapefile_path: str,
         wapor_level: int,
+        period_start: datetime,
+        period_end: datetime,
         api_token: str,
-        project_name: int = 'test',
-        period_start: datetime = datetime.now() - timedelta(days=30),
-        period_end: datetime = datetime.now(),
-        datacomponents: list = ['ALL'],
         return_period: str = 'D',
+        project_name: int = 'test',
         wapor_version: int = 2,
         silent: bool=False,
 
-    ):  
-        # set and generate the parameters
-        self.period_start = period_start
-        self.period_end = period_end
-        self.waporact_directory = waporact_directory
-        self.project_name = project_name
-        self.wapor_level = wapor_level
+    ):
+        # set verbosity (feedback) parameter
+        self.silent = silent
+
+        # set waporapi parameters
         self.api_token = api_token
         self.wapor_version = wapor_version
-        self.silent = silent
-        self.return_period = return_period
-
-        # inherit and initialise the WaporStructure class
-        super().__init__( 
-            waporact_directory=self.waporact_directory,
-            return_period = self.return_period,
-            project_name=self.project_name,
-            period_end=self.period_end,
-            period_start=self.period_start,
-            wapor_level=self.wapor_level
-        )
 
         # attach and setup the waporAPI class
         self.wapor_api = WaporAPI(
-            period_start=self.period_start,
-            period_end=self.period_end,
             version=self.wapor_version
         )
 
-        # set and generate the remaining parameters
-        self.shapefile_path = shapefile_path
-        self.output_crs = None
-        self.bbox = None
-        self.bbox_shapefile = self.bbox
+        # retrieve and set the catalogue for the wapor level being analysed
+        self.catalogue = (wapor_level, waporact_directory)
+        
+        self.components = list(set(list(self.catalogue['component_code'])))
+        self.cube_codes = list(set(list(self.catalogue['code'])))
+        self.period_codes = list(set(list(self.catalogue['period_code'])))
+        self.country_codes = list(set([(country_code, country_desc) for  country_code, country_desc in zip(self.catalogue['country_code'],self.catalogue['country_desc'])]))
 
-        # check all catalogs and reference shapefiles have been stored in the metadata folder
-        if not self.silent:
-            print('running check for all wapor wapor_level catalogues and downloading as needed:')
-        for wapor_level in (1,2,3):
-            self.retrieve_catalog(wapor_level=wapor_level)
+        # inherit and initialise the WaporStructure class
+        super().__init__(
+            waporact_directory=waporact_directory,
+            project_name=project_name,
+            wapor_level=wapor_level,
+            period_end=period_end,
+            period_start=period_start,
+            return_period = return_period,
+        )
+
+        # set and generate shapefile parameters
+        self.shapefile_path = shapefile_path
+
+
+        # run basic data availability checks
+        if self.return_period not in self.period_codes:
+            raise AttributeError('given return period {} not found amongst available options at wapor level 3: {}'.format(self.period_codes))
 
         if self.wapor_level == 3:
-            # check for a wapor_level 3 location shapefile
-            self.set_level_3_availability_shapefile()
-
-            # if wapor_level 3 check if the given area falls within an available area:
-            self.country_code = self.check_level_3_location()
-            self.country_code = self.country_code
+            # check if the bbox falls within an available level 3 area:
+            self.country_code = self.check_bbox_overlaps_l3_location()
         else:
             self.country_code = 'notlevel3notused'
-            self.country_code = self.country_code
 
-        if not self.silent:
-            print('loading wapor catalogue for this run:')
-
-        # set instance catalog
-        self.catalog = self.retrieve_catalog(wapor_level=self.wapor_level)
-
-        # check if return period exists against the retrieved catalog
-        self.check_return_period(return_period)
-
-        # check if datacomponents exist against the retrieved catalog and set them
-        self.datacomponents = self.check_datacomponents(datacomponents)
+        print('WaporRetrieval class initiated and ready for WaPOR data retrieval')
 
     #################################
     # properties
     #################################
     @property
-    def bbox(self):
-        return self._bbox
+    def catalogue(self):
+        return self._catalogue
 
-    @bbox.setter
-    def bbox(self, value: tuple):
-        """ 
+    @catalogue.setter
+    def catalogue(self, value: tuple):
+        """
         Description:
-            if no value is provided takes the self.shapefile_path
-            and produces a bbox tuple using it
+            retrieves the catalogue for the given
+            wapor level and sets it to self, if available retrieves it from
+            file otherwise from the wapor api
 
-        Args:
-            value: existing bbox tuple or nothing
+            NOTE: only meant to be set once per class intialisation
+
+        Args: 
+            value: wapor level as integer and the catalogue directory as a tuple
 
         Return:
-            tuple: calculated or existing bbox
+            dataframe: wapor level catalogue dataframe
         """
-        run = False
-        if not value:
-            run = True
-        elif not isinstance(value, tuple):  
-            run = True
-        else:
-            pass
-        if run:         
-            if not self.shapefile_path:
-                raise AttributeError('please provide the path to a shapefile')
-            else:
-                if os.path.exists(self.shapefile_path):
-                    df = vector.file_to_records(self.shapefile_path, output_crs=4326)
-                    self._bbox = vector.retrieve_geodataframe_bbox(df)
+        if value[0] not in [1,2,3]:
+            raise AttributeError("wapor_level (int) given as value needs to be either 1, 2 or 3")
 
-                else:
-                    raise FileNotFoundError('shapefile not found please provide a new path to a shapefile')
-    
-    #################################
-    @property
-    def bbox_shapefile(self):
-        return self._bbox_shapefile
-
-    @bbox_shapefile.setter
-    def bbox_shapefile(self, value: tuple = None):
-        """ 
-        Description:
-            if a bbox shapefile does not already exist in the expected location 
-            takes the given bbox tuple and produces one, if no
-            tuple is provided attempts to do it using the self.shapefile_path
-        """
-        run = False
-        # check if a bbox shapefile has been previously made
-        bbox_shapefile_name = os.path.splitext(os.path.basename(self.shapefile_path))[0] + '_bbox.shp'
-        bbox_shapefile_path = os.path.join(self.project['reference'],bbox_shapefile_name)
-        if not os.path.exists(bbox_shapefile_path):
-            run = True
-        else: 
-            if not self.silent:
-                print('bbox shapefile can be found at: {}'.format(bbox_shapefile_path))
-            self._bbox_shapefile = bbox_shapefile_path
-            pass
+        if not isinstance(value[1], str):
+            raise AttributeError('please provide a directory path for the waporact directory')
         
-        if run:
-            if isinstance(value, tuple):
-                try:
-                    vector.create_bbox_shapefile(
-                        output_shape_path=bbox_shapefile_path,
-                        bbox=value)
-                    self._bbox_shapefile = bbox_shapefile_path
-                    run = False
-                
-                    if not self.silent:
-                        print('bbox shapefile based on the bbox tuple made and outputted too: {}'.format(bbox_shapefile_path))
-                except:
-                    pass
-                    
-        if run:
-            if not self.shapefile_path:
-                raise AttributeError('please provide the path to a shapefile')
-            else:
-                if os.path.exists(self.shapefile_path):
-                    df = vector.file_to_records(self.shapefile_path, output_crs=4326)
-                    bbox = vector.retrieve_geodataframe_bbox(df)
-                    bbox_shapefile_name = os.path.splitext(os.path.basename(self.shapefile_path))[0] + '_bbox.shp'
-                    bbox_shapefile_path = os.path.join(self.project['reference'],bbox_shapefile_name)
-                    vector.create_bbox_shapefile(
-                        output_shape_path=bbox_shapefile_path,
-                        bbox=bbox)
+        # check waporact metadata directory for existing catalogue (mirrors waporstructure)
+        catalogue_folder = os.path.join(value[1], 'metadata')
+        if not os.path.exists(catalogue_folder):
+            print('waporact metadata directory provided does not exist attempting to make it now')
+            try:
+                os.makedirs(catalogue_folder)
+            except Exception as e:
+                print('failed to make the waporact metadata directory: {}'.format(catalogue_folder))
+                raise e
 
-                    if not self.silent:
-                        print('bbox shapefile based on the input shapefile made and outputted too: {}'.format(bbox_shapefile_path))
-            
-                    self._bbox_shapefile = bbox_shapefile_path
+        print('retrieving the wapor catalogue for wapor level: {}'.format(value[0]))
+        catalogue = self.retrieve_and_store_catalogue(
+            catalogue_output_folder=catalogue_folder,
+            wapor_level=value[0],
+            cubeInfo=True)
 
-                else:
-                    raise FileNotFoundError('shapefile not found please provide a new path to a shapefile')
+        self._catalogue = catalogue
 
-    #################################
+   #################################
     @property
-    def output_crs(self):
-        return self._output_crs
+    def shapefile_path(self):
+        return self._shapefile_path
 
-    @output_crs.setter
-    def output_crs(self, value: int):
+    @shapefile_path.setter
+    def shapefile_path(self, value: str):
         """ 
         Description:
-            checks if a project crs has been provided and if not attempts to
-            retrieve it from the shapefile provided
+            checks it the shapefile path provided exists
+            and if yes sets it to shapefile path
+            and uses it to create a bbox and
+            bbox shapefile_path attached to self
 
         Args:
-            value: int representation of the crs (epsg code)
-
-        Return:
-            int: provided or calculated crs (epsg code)
+            value: path to a shapefile
         """
-        if not value or not isinstance(value, int):
-            if not self.shapefile_path:
-                raise AttributeError('please provide the path to a shapefile')
-            else:
-                if os.path.exists(self.shapefile_path):
-                    self._output_crs = vector.retrieve_shapefile_crs(self.shapefile_path)
-
-                else:
-                    raise FileNotFoundError('shapefile not found please provide a new path to a shapefile')
-
-    #################################
-    @property
-    def wapor_connection_attempts(self):
-        return self._wapor_connection_attempts
-
-    @wapor_connection_attempts.setter
-    def wapor_connection_attempts(self, value: int = None):
-        """
-        Description:
-            creates a dictionary setting the limit and keeping count of the
-            connection attempts made ot the wapor site
-
-        Args:
-            value: any value not int intialises the wapor connection dict
-
-        Return:
-            dict: dictionary with settings to attempt connection/data retrieval from wapor
-        """
-        if not value or not isinstance(value, int):
-            value = {
-                'connection_error':0,
-                'connection_sleep': 2,
-                'connection_limit': 50
-            }
-
-            self._wapor_connection_attempts = value
+        if hasattr(self, 'shapefile_path'):
+            raise AssertionError('shapefile_path already found in class instance, should only be generated once on class activation, code logic error')
 
         else:
-            pass
+            if not isinstance(value, str):
+                raise AttributeError('please provide the path to a shapefile as string')
+            if not os.path.exists(value):
+                raise FileNotFoundError('shapefile not found at given location')
+            
+            bbox_shapefile_name = os.path.splitext(os.path.basename(value))[0] + '_bbox.shp'
+            bbox_shapefile_path = os.path.join(self.project['reference'],bbox_shapefile_name)
 
+            try:
+                print('retrieving the input shapefile crs and setting it to the class instance: output_crs')
+                output_crs = vector.retrieve_shapefile_crs(value)
+            except Exception as e:
+                print('failed to retrieve crs from the input shapefile, please check the error message and or your input shapefile and try again')
+                raise e
+
+            try:
+                print('retrieving the  input shapefile bbox in latlon and setting it to the class instance: bbox')
+                df = vector.file_to_records(value, output_crs=4326)
+                bbox = vector.retrieve_geodataframe_bbox(df)
+            except Exception as e:
+                print('failed to retrieve bbox in latlon from the input shapefile, please check the error message and or your input shapefile and try again')
+                raise e
+
+            try:
+                print('writing the latlon bbox to shapefile and setting it to the class instance: bbox_shapefile_path')
+                vector.create_bbox_shapefile(
+                    output_shape_path=bbox_shapefile_path,
+                    bbox=bbox)
+            except Exception as e:
+                print('failed to write latlon bbox to shapefile, please check the error message and or your input shapefile and try again')
+                raise e
+
+            self._shapefile_path = value
+            self.output_crs = output_crs
+            self.bbox_shapefile_path = bbox_shapefile_path
+            self.bbox = bbox
+
+            print('shapefile, output_crs, bbox and bbox_shapefile set to class instance')
 
     #################################
     # class functions
-    #################################  
+    #################################
+    @classmethod
+    def wapor_connection_attempts_dict(cls):
+        """
+        Description:
+            creates a dictionary for setting the limit and keeping count of the
+            connection attempts made to the wapor site
+
+        Args:
+            0
+
+        Return:
+            dict: dictionary with settings to attempt data retrieval from wapor
+        """
+        return {
+            'connection_attempts':0,
+            'connection_sleep': 3,
+            'connection_attempts_limit': 20
+        }
+
+    #################################
     @classmethod
     def deconstruct_wapor_time_code(
         cls,
@@ -366,115 +318,6 @@ class WaporRetrieval(WaporStructure):
         wapor_time_dict['period_end'] = datetime.strptime(period_end_str,'%Y%m%d')
 
         return wapor_time_dict
-
-    #################################
-    @classmethod
-    def wapor_organise_request_dates_per_year(
-        cls,
-        period_start: str,
-        period_end: str,
-        return_period: str,
-        ):
-        """
-        Description:
-            class subfunction to organise dates for the function download_wapor_rasters
-            so that rasters can be downloaded per year. Also carries out a check to see if the period
-            specified is long enough for the return period specified
-
-        Args:
-            period_start: datetime object start of period to organise
-            period_end: datetime object end of period to organise
-
-        Return:
-            list: list of tuples with the period start and period split between years
-        """
-        # return period in days to check
-        return_period_dict = {
-                        'D': (10, 'Dekadal'),
-                        'M': (30, 'Monthly'),
-                        'S': (100, 'Seasonal'),
-                        'A': (365, 'Annual'),
-                        'LT': (365, 'Long Term'),
-                    }
-
-        # check if period given is long enough for return_period given
-        return_period_length = return_period_dict[return_period][0]
-        num_days = (period_end - period_start).days
-
-        if not num_days >= return_period_length:
-            raise AssertionError('num_days between given period_start: {} and period_end: {} \
-            are not long enough for the given return_period: {} to assure data retrieval'.format(
-                period_start, period_end, return_period_dict[return_period][1]))
-
-        # check if the period is longer than a year
-        start_year = period_start.year
-        end_year = period_end.year
-        num_calendar_years = end_year - start_year + 1
-
-        if num_calendar_years == 0:
-            date_tuples = [(period_start, period_end)] 
-        
-        else:
-            # filter through the years and create datetime period tuples to mine data for
-            days_in_start_year = (datetime(period_start.year,12,31) - period_start).days
-            days_in_end_year = (period_end - datetime(period_end.year,1,1)).days
-            current_year = start_year
-            date_tuples = []
-            skip_year = False # only used in case the first year is combined with the next and the first year is not also the next year
-            for i in range(0, num_calendar_years):
-                if skip_year:
-                    skip_year = False
-                    continue
-                if num_calendar_years == 2: 
-                    # only two calendar years in the period
-                    if days_in_start_year >= return_period_length and days_in_end_year >= return_period_length:
-                        # split the download between the two periods within the two calendar years
-                        date_tuples =  [(period_start, datetime(period_start.year,12,31)), 
-                                        (datetime(period_end.year,1,1), period_end)] 
-                    else:
-                        # the period in either of the two years is to short so keep the original period
-                        date_tuples = [(period_start, period_end)] 
-
-                    break
-
-                else:        
-                    if i == 0: # the first year
-                        if not days_in_start_year >= return_period_length:
-                            # skip a year as the first calendar year is to short so combined with the following year
-                            current_year += 1 
-                            start = period_start
-                            end = datetime(current_year,12,31) 
-                            skip_year = True
-                            
-                        else:
-                            start = period_start
-                            end = datetime(period_start.year,12,31) 
-                        
-                    elif i == num_calendar_years: # if the last year 
-                        if not days_in_end_year >= return_period_length:
-                            #  combine the last two years as the last calendar year is to short so combined with the previous year
-                            current_year -= 1 
-                            if len(date_tuples) == 1:
-                                start = period_start
-                            else:
-                                start = datetime(current_year,1,1)
-                            
-                            end = period_end
-                            date_tuples.pop()
-
-                        else:
-                            start = datetime(period_end.year,1,1)
-                            end = period_end
-                    
-                    else:
-                        # its an inbetween year
-                        start = datetime(current_year,1,1) 
-                        end = datetime(current_year,12,31) 
-
-                    date_tuples.append((start,end))
-                    current_year += 1
-                
-        return date_tuples
 
     #################################
     @classmethod
@@ -532,105 +375,63 @@ class WaporRetrieval(WaporStructure):
 
     #################################
     # check functions
-    #################################    
-    def check_return_period(self, return_period: str):
-        """
-        Description
-            checks if the return period code given exists in the given catalog
-
-            NOTE: auto limited to return period codes belonging to the wapor_level previously
-            specified during class initiation
-
-        Args:
-            return_period: return period code to check for
-
-        Return
-            int: 0
-
-        Raise:
-            AttributeError: If return period does not match expected return period codes
-        """
-        codes = list(self.catalog['period_code'])
-        if not return_period in codes:
-            desc = list(self.catalog['period_desc'])
-            combos = [item for item in zip(codes,desc)]
-            combos = list(set(combos)) # filter to unique combos
-            raise AttributeError('given return period could not be found among the available return periods, \
-            use one of the following and try activating the class again: {}'.format(combos))
-
-        return 0
-
-
     #################################
-    def check_datacomponents(
+    def check_datacomponent_availability(
         self,
         datacomponents: list,
         return_period: str=None):
         """
         Description
-            checks if the datacomponents given are real ones that can be retrieved
-            according to the catalog, if All is provided all available datacomponents are returned.
-
-            NOTE: auto limited to datacomponents belonging to the wapor_level previously
-            specified during class initiation
+            checks if the combination of  wapor level, datacomponents, return period and
+            country code (at level 3) that make up a cube code are available per
+            datacomponent
+            
+            NOTE: if All is provided all available datacomponents are returned.
 
         Args:
             datacomponents: list of datacomponents to check
-            return_period: if provided overwrties class return period
+            return_period: if provided overwrites return period set on class activation
 
         Return
-            list: list of datacomponents that do exist
+            list: list of datacomponents, cube_codes that do exist
 
         Raise:
-            raises error if no datacomponents exists
+            raises error if no cube_code exist for any datacomponent specified
         """
-        if not return_period:
-            return_period = self.return_period
-        # check given return period exists first
-        self.check_return_period(return_period)
+        self.return_period = return_period
+        
+        if datacomponents[0] == 'ALL':
+            if self.wapor_level == 3:
+                available_datacomponents = [comp for comp in self.components if 'L{}_{}_{}_{}'.format(self.wapor_level,self.country_code,comp,self.return_period) in self.cube_codes] 
+            else:
+                available_datacomponents = [comp for comp in self.components if 'L{}_{}_{}'.format(self.wapor_level,comp,self.return_period) in self.cube_codes] 
 
-        # retrieve all components from the catalog at class given wapor level
-        catalog_components = list(set(list(self.catalog['component_code'])))
-        catalog_codes = list(set(list(self.catalog['code'])))
-
-        # retrieve all datacomponents for given combination of level, return period and country code (if applicable)
-        if self.wapor_level == 3:
-            available_datacomponents = [comp for comp in catalog_components if 'L{}_{}_{}_{}'.format(self.wapor_level,self.country_code,comp,return_period) in catalog_codes] 
-        else:
-            available_datacomponents = [comp for comp in catalog_components if 'L{}_{}_{}'.format(self.wapor_level,comp,return_period) in catalog_codes] 
-
-        if datacomponents[0] is 'ALL':
-            out_datacomponents = available_datacomponents
         else:
             if self.wapor_level == 3:
-                existing_datacomponents = [comp for comp in datacomponents if 'L{}_{}_{}_{}'.format(self.wapor_level,self.country_code,comp,return_period) in catalog_codes]
-                missing_datacomponents = [comp for comp in datacomponents if  'L{}_{}_{}_{}'.format(self.wapor_level,self.country_code,comp,return_period) not in catalog_codes]
+                available_datacomponents = [comp for comp in datacomponents if 'L{}_{}_{}_{}'.format(self.wapor_level,self.country_code,comp,self.return_period) in self.cube_codes]
+                missing_datacomponents = [comp for comp in datacomponents if  'L{}_{}_{}_{}'.format(self.wapor_level,self.country_code,comp,self.return_period) not in self.cube_codes]
             else:
-                existing_datacomponents = [comp for comp in datacomponents if 'L{}_{}_{}'.format(self.wapor_level,comp,return_period) in catalog_codes]
-                missing_datacomponents = [comp for comp in datacomponents if  'L{}_{}_{}'.format(self.wapor_level,comp,return_period) not in catalog_codes]
+                available_datacomponents = [comp for comp in datacomponents if 'L{}_{}_{}'.format(self.wapor_level,comp,self.return_period) in self.cube_codes]
+                missing_datacomponents = [comp for comp in datacomponents if  'L{}_{}_{}'.format(self.wapor_level,comp,self.return_period) not in self.cube_codes]
                
             if missing_datacomponents:
-                print('Available datacomponents for the given inputs: {}'.format(available_datacomponents))
+                print('Available datacomponents of those specified: {}'.format(available_datacomponents))
                 raise AttributeError('at wapor level: {} and return period: {} , the following datacomponents could not be \
-                found and may not exist: {}'.format(self.wapor_level, return_period, missing_datacomponents))
-            elif not existing_datacomponents:
-                raise AttributeError('at wapor level: {} and return period: {} , no datacomponents could  be \
-                found'.format(self.wapor_level, return_period))
-            else:
-                out_datacomponents = existing_datacomponents
+                found and may not exist (at level 3 region may also affect availibility): {}'.format(self.wapor_level, return_period, missing_datacomponents))
+        
+        if not available_datacomponents:
+            raise AttributeError('at wapor level: {} and return period: {} , no datacomponents could be \
+            found, this is unlikely'.format(self.wapor_level, return_period))
 
-        return out_datacomponents
+        return available_datacomponents
 
     #################################
-    def check_level_3_location(self):
+    def check_bbox_overlaps_l3_location(self):
         """
         Description:
-            takes the given shapefiel/boundingbox and checks if it 
+            takes the given shapefile/boundingbox and checks if it
             falls within the boundaries of a wapor_level 3 area by comparing with
-            the level3 shapefile generated on initialisation
-
-        Args:
-            self: shapefile_path
+            the level 3 availability shapefile generated/retrieved
 
         Return:
             str: area code of the area the shapefile falls within
@@ -638,10 +439,11 @@ class WaporRetrieval(WaporStructure):
         Raises:
             FileNotFoundError: if the shapefile/bbox does not fall within an available area
         """
+        l3_locations_shapefile_path = self.retrieve_level_3_availability_shapefile()
         code = None
 
-        with fiona.open(self.l3_locations_shapefile_path, 'r') as layer1:
-            with fiona.open(self.bbox_shapefile, 'r') as layer2:
+        with fiona.open(l3_locations_shapefile_path, 'r') as layer1:
+            with fiona.open(self.bbox_shapefile_path, 'r') as layer2:
                 index = rtree.index.Index()
                 for feat1 in layer1:
                     fid = int(feat1['id'])
@@ -661,39 +463,67 @@ class WaporRetrieval(WaporStructure):
 
         if not code:
             raise AttributeError('no overlap found between wapor_level 3 locations shapefile: {} and the generated bbox shapefile: {}\
-            it is likely that there is no data available at level 3 for this area, check in qgis or similar'.format(
-                self.l3_locations_shapefile_path, self.bbox_shapefile))
+            it is likely that there is no data available at level 3 for this area, check in qgis or similar to confirm'.format(
+                l3_locations_shapefile_path, self.bbox_shapefile_path))
         
         return code
     
     #################################
     # retrieval functions
     #################################
-    def retrieve_catalog(
+    def generate_wapor_cube_code(
         self,
-        wapor_level: int = None,
+        component: str,
+        return_period:str=None,
+        ):
+        """
+        Description:
+            format and return the cube code for querying for wapor data
+            adding the region code for l3 if needed
+
+        Args:
+            component: wapor component code to query for a wapor cube code with
+            return_period: return period code to for a wapor cube code with
+        """
+        if self.wapor_level == 3:
+            component = '{}_{}'.format(self.country_code, component)
+        cube_code=f"L{self.wapor_level}_{component}_{return_period}"
+
+        if cube_code not in self.cube_codes:
+            raise AttributeError('cube code generated: {}, not found in available list: {}'.format(cube_code, self.cube_codes))
+
+        return cube_code
+
+    #################################
+    def retrieve_and_store_catalogue(
+        self,
+        catalogue_output_folder: str,
+        wapor_level: int,
         cubeInfo=True):
         '''
         Description:
-            retrieves the wapor catalog from the standard storage location a sub directory of
+            retrieves the wapor catalogue fromWaPOR and formats it as a dataframe for use
+            directly and stores a copy in the standard storage location a sub directory of
             the waporact directory you set on class activation. On retrieval creates a
-            dataframe and sets it to self.catalog for use.
+            dataframe and sets it to self.catalogue for use.
 
-            if the catalog was not found or the version found was too old attempts to retrieve
+            if the catalogue was not found or the version found was too old attempts to retrieve
             it from the WAPOR database.
 
             NOTE: based on the WaporAPI class function getCatalog
 
         Args:
-            wapor_level: level to retrieve the catalog for
-            cube_info: if true also retrieves and formats the cube info from the catalog into
+            wapor_level: level to retrieve the catalogue for
+            cube_info: if true also retrieves and formats the cube info from the catalogue into
             the output dataframe
 
         Return:
-            dataframe: dataframe of the retrieved catalog
+            dataframe: dataframe of the retrieved catalogue
         '''
+        if wapor_level not in [1,2,3]:
+            raise AttributeError("wapor_level (int) needs to be either 1, 2 or 3")
         retrieve=False
-        catalogue_csv = os.path.join(self.project['meta'], 'wapor_catalogue_L{}.csv'.format(wapor_level))
+        catalogue_csv = os.path.join(catalogue_output_folder, 'wapor_catalogue_L{}.csv'.format(wapor_level))
         if not os.path.exists(catalogue_csv):
             retrieve = True
         else:
@@ -702,73 +532,39 @@ class WaporRetrieval(WaporStructure):
                 retrieve = True
         
         if retrieve:
-            print('No or Outdated WaPOR catalog found for wapor_level: {}, retrieving...'.format(wapor_level))
-            try:
-                df = self.wapor_api._query_catalog(wapor_level)
-            except:
-                print('ERROR: data of the specified wapor_level could not be retrieved'
-                ' or there was a connection error (wapor_level: {})'.format(self.wapor_level))
+            print('No or Outdated WaPOR catalogue found for wapor_level: {}, retrieving now this may take a min...'.format(wapor_level))
+
+            catlogue_df = self.wapor_api.retrieve_catalogue_as_dataframe(
+                wapor_level=wapor_level,
+                cubeInfo=cubeInfo
+            )
             
-            if cubeInfo:
-                cubes_measure=[]
-                cubes_dimension=[]
-                for cube_code in df['code'].values:                
-                    cubes_measure.append(self.wapor_api._query_cubeMeasures(cube_code,
-                                                                       version=self.wapor_api.version))
-                    cubes_dimension.append(self.wapor_api._query_cubeDimensions(cube_code,
-                                                                       version=self.wapor_api.version))
-                df['measure'] = cubes_measure
-                df['dimension'] = cubes_dimension
-
-            df['period_code'] = df['code'].str.split('_').str[-1]
-            df['component_code'] = df['code'].str.split('_').str[-2]
-            df['component_desc'] = df['caption'].str.split('(').str[0]
-
-            df.loc[df['period_code'] == 'LT' ,'period_desc'] = 'Long Term'
-            df.loc[df['period_code'] == 'A' ,'period_desc'] = 'Annual'
-            df.loc[df['period_code'] == 'S' ,'period_desc'] = 'Seasonal'
-            df.loc[df['period_code'] == 'M' ,'period_desc'] = 'Monthly'
-            df.loc[df['period_code'] == 'D' ,'period_desc'] = 'Dekadal'
-            df.loc[df['period_code'] == 'E' ,'period_desc'] = 'Daily'
-
-            if wapor_level == 3:
-                df['country_code'] = df['code'].str.split('_').str[1]
-                df['country_desc'] = df['caption'].str.split('\(').str[-1].str.split('-').str[0]  
-            else:
-                pass
-
-            df.loc[df['code'].str.contains('QUAL'), 'component_code'] = 'QUAL_' + df['component_code'] 
-
-            df = df.fillna('NaN')
-
             statistics.output_table(
-                table=df,
+                table=catlogue_df,
                 output_file_path=catalogue_csv,
                 csv_seperator=';')
         
             print("outputted table of the WaPOR catalogue for wapor_level: {}".format(wapor_level))
             print(catalogue_csv)
-            print('on running the retrieval class again the catalogue will be auto replaced ' 
-                'if the catalogue becomes outdated after a 60 day period or if is not found')    
+            print('on running the retrieval class again the catalogue will be reused if found or auto replaced '
+                'if the catalogue becomes outdated after a 60 day period')
         else:
-            df = pd.read_csv(catalogue_csv, sep=';')
-            df['measure'] = df['measure'].apply(lambda x: literal_eval(x))
-            df['dimension'] = df['dimension'].apply(lambda x: literal_eval(x))
-
-        self.catalog=df
+            catlogue_df = pd.read_csv(catalogue_csv, sep=';')
+            catlogue_df['measure'] = catlogue_df['measure'].apply(lambda x: literal_eval(x))
+            catlogue_df['dimension'] = catlogue_df['dimension'].apply(lambda x: literal_eval(x))
         
         if not self.silent:
-            print('Loading WaPOR catalog for wapor_level: {}'.format(wapor_level))
+            print('Loading WaPOR catalogue for wapor_level: {}'.format(wapor_level))
             print('catalogue location: {}'.format(catalogue_csv))
 
-        return self.catalog  
+        return catlogue_df
 
     #################################
-    def set_level_3_availability_shapefile(
+    def retrieve_level_3_availability_shapefile(
         self):
         """
         Description:
-            sets the path to the wapor level 3 locations shapefile
+            retrieves and sets the path to the wapor level 3 locations shapefile
             and if it does not exist or is outdated creates it
 
             filepath generated is set to self.l3_locations_shapefile_path
@@ -776,8 +572,7 @@ class WaporRetrieval(WaporStructure):
             user on class activation
 
         Return:
-            int: 0
-
+            str: path to the generated L3 location shapefile
         """
         retrieve = False
         l3_locations_shapefile_path = os.path.join(self.project['meta'], 'wapor_L3_locations.shp')
@@ -787,31 +582,26 @@ class WaporRetrieval(WaporStructure):
             retrieve = True
         else:
             # check how old the file is
-            st=os.stat(l3_locations_shapefile_path) 
-            if (time.time() - st.st_mtime) >= 5184000: # 60 days
+            st=os.stat(l3_locations_shapefile_path)
+            if (time.time() - st.st_mtime) >= 10368000: # 120 days
                 retrieve = True
 
         if retrieve:
-            print('creating wapor_level 3 locations shapefile')
+            print('creating wapor_level 3 locations shapefile, this may take a min ...')
             # set temporary date variables
             api_per_start = datetime(2010,1,1).strftime("%Y-%m-%d")
             api_per_end = datetime.now().strftime("%Y-%m-%d")
             api_period = '{},{}'.format(api_per_start, api_per_end)
 
             # retrieve country codes
-            temp_catalog = self.retrieve_catalog(wapor_level=3) 
-            country_codes = zip(list(temp_catalog['country_code']),list(temp_catalog['country_desc']))
-            codes = list(set([(x,y) for x,y in country_codes]))
             _data = []
             # loop through countries check data availability and retrieve the bbox
-            for code in codes:
+            for code in self.country_codes:
                 cube_code= f"L3_{code[0]}_T_D"
 
-                try:
-                    df_avail=self.wapor_api.getAvailData(cube_code,time_range=api_period)
-                except:
-                    print('ERROR: cannot get list of available data')
-                    raise AttributeError('check the cube code against the L3 catalogue: {}'.format(cube_code))
+                df_avail = self.retrieve_wapor_data_availability(
+                    cube_code=cube_code,
+                    time_range=api_period)
                 
                 bbox = df_avail.iloc[0]['bbox'][1]['value']
                 _data.append(({
@@ -837,13 +627,11 @@ class WaporRetrieval(WaporStructure):
                 for d in _data:
                     # Write output
                     output.write({
-                        'properties': d[0], 
+                        'properties': d[0],
                         'geometry': mapping(Polygon(d[1]))
                     })
 
-
             print('wapor_level 3 locations file made')
-        
         else:
             if not self.silent:
                 print('wapor_level 3 location shapefile exists skipping retrieval')
@@ -851,9 +639,7 @@ class WaporRetrieval(WaporStructure):
         if not self.silent:
             print('wapor_level 3 location shapefile: {}'.format(l3_locations_shapefile_path))
 
-        self.l3_locations_shapefile_path = l3_locations_shapefile_path
-
-        return 0
+        return l3_locations_shapefile_path
 
     #################################
     def create_raster_mask_from_shapefile(
@@ -878,6 +664,11 @@ class WaporRetrieval(WaporStructure):
         Return:
             tuple: path to the mask raster created, path to the mask shapefile created
         """
+        # store time parameters as temp variables used below
+        save_return_period = self.return_period
+        save_period_start = self.period_start
+        save_period_end = self.period_end
+
         if not input_shapefile_path:
             input_shapefile_path = self.shapefile_path
 
@@ -906,7 +697,7 @@ class WaporRetrieval(WaporStructure):
             if not template_raster_path:
                 for rp in [dekadal, monthly, annual]:
                     # get a raster as template
-                    datacomponents = self.check_datacomponents(datacomponents=['ALL'], return_period=rp[0])
+                    datacomponents = self.check_datacomponent_availability(datacomponents=['ALL'], return_period=rp[0])
                     for datacomp in datacomponents:
                         wapor_download_list = self.retrieve_wapor_download_info(
                             datacomponents=[datacomp],
@@ -961,6 +752,11 @@ class WaporRetrieval(WaporStructure):
                 print("preexisting raster mask and shape mask found skipping step")
             raster.check_gdal_open(mask_raster_path)
 
+        # restore time parameters 
+        self.return_period = save_return_period
+        self.period_start =save_period_start
+        self.period_end = save_period_end 
+
         return mask_raster_path, mask_shape_path
 
     #################################
@@ -976,25 +772,25 @@ class WaporRetrieval(WaporStructure):
         Description:
             creates a mask raster and shapefile for further anaylsis
             using the bbox as defined by the shapefile and lcc categories initially
-            provided and the land cover classification rasters 
+            provided and the land cover classification rasters
             that can be found on the WAPOR database
             if the period defined covers more than one raster it
             combines them all into one for the entire period.
             keeping the classification most common across the entire period
 
-            the mask retrieved from WAPOR is considered the raw one as is the 
+            the mask retrieved from WAPOR is considered the raw one as is the
             shapefile based on it the crop mask is further clipped to an edited version
-            of the initial mask the user can pick which one they use  
+            of the initial mask the user can pick which one they use
         
         Args:
             mask_name: aoi or mask name of the mask for the output file and aoi (mask) sub folder
-            lcc_categories: crops/land classification categories to mask too 
-            has to match the names used in the wapor database classification codes          
+            lcc_categories: crops/land classification categories to mask too
+            has to match the names used in the wapor database classification codes
             period_start: period for which to retrieve the land cover raster
             period_end: period for which to retrieve the land cover raster,
-            area_threshold_multiplier: area threshold with which to filter out too small polygons  
+            area_threshold_multiplier: area threshold with which to filter out too small polygons
             (single cell area * area_threshold_multiplier sets the threshold)
-            output_nodata: nodata value for the output rasters that arte not 0,1 masks 
+            output_nodata: nodata value for the output rasters that arte not 0,1 masks
 
             uses the value defined during class intialisation if period_start,
             period_end or return_period or input_shapefile_path is not provided
@@ -1002,10 +798,11 @@ class WaporRetrieval(WaporStructure):
         Return:
             tuple: path to the mask raster created, path to the mask shape created
         """
-        if not period_start:
-            period_start=self.period_start
-        if not period_end:
-            period_end = self.period_end
+        self.period_start = period_start
+        self.period_end = period_end
+
+        # store return period 
+        save_return_period = self.return_period
 
         lcc_dict = lcc.wapor_lcc(wapor_level=self.wapor_level)
 
@@ -1125,8 +922,8 @@ class WaporRetrieval(WaporStructure):
                     datacomponents=['LCC'],
                     template_raster_path=base_mask_raster_path,
                     return_period=rp,
-                    period_start=period_start,
-                    period_end=period_end,
+                    period_start=self.period_start,
+                    period_end=self.period_end,
                     output_nodata=output_nodata,
                     aoi_name=mask_name
                     )
@@ -1181,7 +978,7 @@ class WaporRetrieval(WaporStructure):
                 mask_raster_path=raw_mask_raster_path)
             
             # add the lcc categories to the crop mask
-            vector.add_matched_values_to_shapefile( 
+            vector.add_matched_values_to_shapefile(
                 input_shapefile_path=raw_mask_shape_path,
                 new_column_name='lcc_cat',
                 union_key='lcc_val',
@@ -1241,6 +1038,9 @@ class WaporRetrieval(WaporStructure):
             count_dict=lcc_masked_count_dict
         )
 
+        # restore return period
+        self.return_period = save_return_period
+
         return mask_raster_path, mask_shape_path
 
     #################################
@@ -1250,7 +1050,7 @@ class WaporRetrieval(WaporStructure):
         ):
         """
         Description:
-            wrapper for WaporAPI getCubeInfo that runs it 
+            wrapper for WaporAPI getCubeInfo that runs it
             multiple times in an attempt to force a connection
             and retrieve the cube info
             from the WAPOR database in a more robust fashion
@@ -1266,12 +1066,15 @@ class WaporRetrieval(WaporStructure):
             TimeoutError: if the error is not a request error (unknown) and it fails for another reason
         """
         # reset connection attempts
-        self.wapor_connection_attempts()
+        self.wapor_connection_attempts = WaporRetrieval.wapor_connection_attempts_dict()
         cube_info = None
         while cube_info is None:
             # attempt to retrieve cube_info
             try:
-                cube_info=self.wapor_api.getCubeInfo(cube_code)
+                cube_info=self.wapor_api.getCubeInfo(
+                    cube_code=cube_code,
+                    wapor_level=self.wapor_level,
+                    catalogue=self.catalogue)
             except Exception as e:
                 self.wapor_retrieval_connection_error(
                     description='retrieving cube info',
@@ -1287,7 +1090,7 @@ class WaporRetrieval(WaporStructure):
         ):
         """
         Description:
-            wrapper for WaporAPI getAvailData that runs it 
+            wrapper for WaporAPI getAvailData that runs it
             multiple times in an attempt to force a connection
             and retrieve the cube info
             from the WAPOR database in a more robust fashion
@@ -1304,12 +1107,17 @@ class WaporRetrieval(WaporStructure):
             TimeoutError: if the error is not a request error (unknown) and it fails for another reason
         """
         # reset connection attempts
-        self.wapor_connection_attempts()
+        self.wapor_connection_attempts = WaporRetrieval.wapor_connection_attempts_dict()
         data_availability = None
         while data_availability is None:
             # attempt to retrieve cube_info
             try:
-                data_availability=self.wapor_api.getAvailData(cube_code, time_range=time_range)
+                data_availability=self.wapor_api.getAvailData(
+                    cube_code=cube_code,
+                    time_range=time_range,
+                    wapor_level=self.wapor_level,
+                    catalogue=self.catalogue)
+                    
             except Exception as e:
                 self.wapor_retrieval_connection_error(
                     description='retrieving data avialbility info',
@@ -1348,7 +1156,7 @@ class WaporRetrieval(WaporStructure):
             TimeoutError: if the error is not a request error (unknown) and it fails for another reason
         """
         # reset connection attempts
-        self.wapor_connection_attempts()
+        self.wapor_connection_attempts = WaporRetrieval.wapor_connection_attempts_dict()
         url = None
         while url is None:
             try:
@@ -1359,7 +1167,9 @@ class WaporRetrieval(WaporStructure):
                     time_code=time_code,
                     rasterId=raster_id,
                     APIToken=api_token,
-                    print_job=False)   
+                    print_job=False,
+                    wapor_level=self.wapor_level,
+                    catalogue=self.catalogue)
 
             except Exception as e:
                 self.wapor_retrieval_connection_error(
@@ -1376,7 +1186,7 @@ class WaporRetrieval(WaporStructure):
         ):
         """
         Description:
-            wrapper function that attempts to retrieve the raster 
+            wrapper function that attempts to retrieve the raster
             from the wpaor database using a stanrd api request and stores it
 
         Args:
@@ -1395,7 +1205,7 @@ class WaporRetrieval(WaporStructure):
             raise AttributeError('wapor_dict url missing which should not be possible at this stage check out retrieve_wapor_download_info')
         else:
             # reset connection attempts
-            self.wapor_connection_attempts()
+            self.wapor_connection_attempts = WaporRetrieval.wapor_connection_attempts_dict()
             #initiate retrieval variables
             wapor_raster_result = None
             while wapor_raster_result is None:
@@ -1439,37 +1249,40 @@ class WaporRetrieval(WaporStructure):
             int: 0
 
         Raise:
-            ConnectionError: if the limit of attempts is reached and still no connection 
+            ConnectionError: if the limit of attempts is reached and still no connection
             was established due to a connection error
 
-            TimeoutError: if the limit of attempts is reached and still no connection 
+            TimeoutError: if the limit of attempts is reached and still no connection
             was established due to an unknown error
         """
         time.sleep(self.wapor_connection_attempts['connection_sleep']) 
-        self.wapor_connection_attempts['connection_error'] += 1
-        if self.wapor_connection_attempts['connection_error'] == abs(self.wapor_connection_attempts['connection_limit']/2):
-            print('{} failed,  {} connection errors noted, will continue connection attempts'.format(description, self.wapor_connection_attempts['connection_error'])) 
-        if self.wapor_connection_attempts['connection_error'] >= self.wapor_connection_attempts['connection_limit']:
+        self.wapor_connection_attempts['connection_attempts'] += 1
+        if self.wapor_connection_attempts['connection_attempts'] == abs(self.wapor_connection_attempts['connection_attempts_limit']/2):
+            print('{} failed,  {} connection errors noted, will continue connection attempts'.format(description, self.wapor_connection_attempts['connection_attempts'])) 
+        if self.wapor_connection_attempts['connection_attempts'] >= self.wapor_connection_attempts['connection_attempts_limit']:
             if isinstance(_exception,requests.exceptions.RequestException):
                 error_statement = ('{} from WAPOR '
                     'attempted to request data {} times every {} sec and failed due to request/connection error, adjust the self.wapor_connection_attempts or sleep'
-                    'time to try for longer'.format(description, self.wapor_connection_attempts['connection_error'], self.wapor_connection_attempts['connection_sleep']))
+                    'time to try for longer, there may also be no data available for your combination of return period, period_start, period_end,'
+                    'and datacomponent'.format(description, self.wapor_connection_attempts['connection_attempts'], self.wapor_connection_attempts['connection_sleep']))
                 raise ConnectionError(error_statement)
 
             else:
                 error_statement = ('{} from WAPOR '
                     'attempted to request data {} times every {} sec and failed due to unknown error, adjust the self.wapor_connection_attempts or sleep'
-                    'time to try for longer'.format(description, self.wapor_connection_attempts['connection_error'], self.wapor_connection_attempts['connection_sleep']))
+                    ' time to try for longer, there may also be no data available for your combination of return period, period_start, period_end,'
+                    'and datacomponent'.format(description, self.wapor_connection_attempts['connection_attempts'], self.wapor_connection_attempts['connection_sleep']))
                 raise TimeoutError(error_statement)
 
-        return 0 
+        return 0
 
    #################################
-    def retrieve_wapor_download_info(self, 
-        datacomponents: list=None, 
-        period_start: datetime=None, 
-        period_end: datetime=None,
-        return_period: str = None,
+    def retrieve_wapor_download_info(
+        self, 
+        datacomponents: list,
+        period_start: datetime, 
+        period_end: datetime,
+        return_period: str,
         aoi_name: str = 'nomask'):
         """
         Description:
@@ -1487,37 +1300,38 @@ class WaporRetrieval(WaporStructure):
 
             NOTE: aoi_name (mask name) if supplied should match that in retrieve_actual_wapor_rasters
 
+            NOTE: does not use clas sinstance period_start, period_end or return period as it assumes 
+            these inputs are provided by download_wapor_rasters
+
         Args:
-            self: datacomponents, wapor_level, return_period, out_dir, shapefile_path, period_start (see class for details)
-            datcomponents: datacomponents if you want to repeat the function using non self functions,
-            period_start: datacomponents if you want to repeat the function using non self functions,
-            period_end: datacomponents if you want to repeat the function using non self functions,
-            return_period: if provided overrides the return period of the class
+            datcomponents: list of datacomponents to retrieve,
+            period_start: start of period to retrieve data for 
+            period_end: end of period to retrieve data for
+            return_period: return period/interval to retrieve data for
             aoi_name: area of interest (aoi) name to use for the mask folder auto set to nomask if not provided
 
         Return:
             list: list of dicts containing variables that can be used to retrieve and store a specific wapor raster
         """
-        if not return_period:
-            return_period = self.return_period
-        if not datacomponents:
-            datacomponents = self.datacomponents
-        if not period_start:
-            period_start=self.period_start
-        if not period_end:
-            period_end = self.period_end
+        self.return_period = return_period
+        
+        assert isinstance(period_start, datetime), 'period_start must be a datetime object'
+        assert isinstance(period_end, datetime), 'period_end must be a datetime object'
+
+        if not isinstance(datacomponents, list):
+            raise TypeError('datacomponents provided should be formatted as a list of strings')
 
         # generate dates for filenames
-        dates_dict = self.generate_dates_dict(
+        dates_dict = WaporStructure.generate_dates_dict(
             period_start=period_start,
             period_end=period_end,
-            return_period=return_period)
+            return_period=self.return_period)
         
         # setup output list
         wapor_download_list = []
 
         #check if the datacomponents are available
-        datacomponents = self.check_datacomponents(datacomponents, return_period)
+        datacomponents = self.check_datacomponent_availability(datacomponents, self.return_period)
 
         # retrieve download info per available datacomponent
         for component in datacomponents:
@@ -1530,7 +1344,7 @@ class WaporRetrieval(WaporStructure):
             # construct the wapor_cube_code
             cube_code = self.generate_wapor_cube_code(
                 component=component,
-                return_period=return_period,
+                return_period=self.return_period,
                 )
             
             # attempt to retrieve cube code info
@@ -1559,7 +1373,7 @@ class WaporRetrieval(WaporStructure):
 
             # retrieve data
             for __ ,row in df_avail.iterrows():
-                wapor_time_dict = self.deconstruct_wapor_time_code(
+                wapor_time_dict = WaporRetrieval.deconstruct_wapor_time_code(
                     time_code = row['time_code'])
                 
                 # construct  wapor download dict
@@ -1569,7 +1383,7 @@ class WaporRetrieval(WaporStructure):
                 wapor_dict['period_string'] = wapor_time_dict['period_string'] 
                 wapor_dict['period_start'] = wapor_time_dict['period_start'] 
                 wapor_dict['period_end'] = wapor_time_dict['period_end']
-                wapor_dict['return_period'] = return_period
+                wapor_dict['return_period'] = self.return_period
                 wapor_dict['raster_id'] = row['raster_id']
                 wapor_dict['multiplier'] = multiplier
 
@@ -1579,7 +1393,7 @@ class WaporRetrieval(WaporStructure):
                     wapor_dict[folder_key] = self.generate_input_file_path(
                         component=component,
                         raster_id=row['raster_id'],
-                        return_period=return_period,
+                        return_period=self.return_period,
                         input_folder=folder_key,
                         ext='.tif')
 
@@ -1681,7 +1495,7 @@ class WaporRetrieval(WaporStructure):
         for wapor_dict in wapor_download_list:
             if wapor_dict['processing_steps'] >= 3:
                 # retrieve the raster and write to the download folder
-                WaporRetrieval.wapor_raster_request(
+                self.wapor_raster_request(
                     wapor_url=wapor_dict['url'],
                     output_file_path=wapor_dict['temp']
                     )
@@ -1797,10 +1611,9 @@ class WaporRetrieval(WaporStructure):
 
         Args:
             self: (see class for details) 
-            datcomponents: datacomponents if you want to repeat the function using non self functions,
-            period_start: datacomponents if you want to repeat the function using non self functions,
-            period_end: datacomponents if you want to repeat the function using non self functions,
-            return_period: if provided overrides the return period of the class
+            period_start: start of period to retrieve data for, if not provided uses class version
+            period_end: end of period to retrieve data for, if not provided uses class version
+            return_period: return period/interval to retrieve data for, if not provided uses class version
             aoi_name: area of interest (aoi) name to use for the mask folder auto set to nomask if not provided
             template_raster_path: if provided uses the template as the source for the metadata and matches rasters too 
             it and masks them too match it too
@@ -1810,20 +1623,18 @@ class WaporRetrieval(WaporStructure):
             dict: dictionary of dictionaries ordered by datacomponent each containing a list of rasters 
             downloaded, a list of yearly vrts and the path to the full period vrt        
         """
-        if not datacomponents:
-            datacomponents = self.datacomponents
-        if not period_start:
-            period_start=self.period_start
-        if not period_end:
-            period_end = self.period_end
-        if not return_period:
-            return_period = self.return_period
+        self.period_start = period_start
+        self.period_end = period_end
+        self.return_period = return_period
+
+        if not isinstance(datacomponents, list):
+            raise TypeError('datacomponents provided should be formatted as a list of strings')
 
         # setup download to be carried out per year depending on the requested dates
-        date_tuples = WaporRetrieval.wapor_organise_request_dates_per_year(
-            period_start=period_start,
-            period_end=period_end,
-            return_period=return_period
+        date_tuples = WaporStructure.wapor_organise_request_dates_per_year(
+            period_start=self.period_start,
+            period_end=self.period_end,
+            return_period=self.return_period
         )
 
         # setup download variables
@@ -1839,7 +1650,7 @@ class WaporRetrieval(WaporStructure):
                 datacomponents=datacomponents, 
                 period_start=dt[0], 
                 period_end=dt[1],
-                return_period=return_period,
+                return_period=self.return_period,
                 aoi_name=aoi_name)
 
             # retrieve and process the rasters        
@@ -1866,8 +1677,8 @@ class WaporRetrieval(WaporStructure):
             # generate the vrt file name 
             complete_vrt_path = self.generate_output_file_path(
                 description=datacomponent,
-                period_start=period_start,
-                period_end=period_end,
+                period_start=self.period_start,
+                period_end=self.period_end,
                 output_folder='masked',
                 aoi_name=aoi_name,
                 ext='.vrt')
@@ -1885,4 +1696,3 @@ class WaporRetrieval(WaporStructure):
 if __name__ == "__main__":
     start = default_timer()
     args = sys.argv
-

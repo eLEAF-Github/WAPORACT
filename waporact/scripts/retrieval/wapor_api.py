@@ -5,33 +5,36 @@ Original Authors: Bich Tran
 Contact: b.tran@un-ihe.org
 
 Edited: Roeland de Koning
-    eLEAF 2021
+    eLEAF 2021 - 2022
 
 Script used to retrieve data from the wapor api
 """
 import requests
-import json
-from ast import literal_eval
 import pandas as pd
 from datetime import datetime, timedelta
-from time import time
-import os
 
 class WaporAPI(object):
-    def __init__(self,    
-        period_start: datetime = datetime.now() - timedelta(days=1),
-        period_end: datetime = datetime.now(),
+    """
+    Description:
+        provides access to the FAO run WAPOR API and the data hosted on
+        the portal. This script was originally developed by Bich Tran
+        and IHE Delft and adjusted for use within waporact.
+
+    Return:
+        class: provides access to the wapor api via standardised api calls
+    """
+    def __init__(self,
         path_catalog: str = r'https://io.apps.fao.org/gismgr/api/v1/catalog/workspaces/',
-        path_sign_in: str= r'https://io.apps.fao.org/gismgr/api/v1/iam/sign-in/', 
+        path_sign_in: str= r'https://io.apps.fao.org/gismgr/api/v1/iam/sign-in/',
         path_refresh: str = r'https://io.apps.fao.org/gismgr/api/v1/iam/token',
         path_download: str =  r'https://io.apps.fao.org/gismgr/api/v1/download/',
-        path_query: str =  r'https://io.apps.fao.org/gismgr/api/v1/query/', 
-        path_jobs: str = r'https://io.apps.fao.org/gismgr/api/v1/catalog/workspaces/WAPOR/jobs/', 
-        version: int = 2,  
+        path_query: str =  r'https://io.apps.fao.org/gismgr/api/v1/query/',
+        path_jobs: str = r'https://io.apps.fao.org/gismgr/api/v1/catalog/workspaces/WAPOR/jobs/',
+        version: int = 2,
     ):
-    
-        self.period_start = period_start
-        self.period_end = period_end
+
+        self.request_start = datetime.now() - timedelta(days=1)
+        self.request_end = datetime.now()
         self.path_catalog = path_catalog
         self.path_sign_in = path_sign_in
         self.path_refresh = path_refresh
@@ -40,6 +43,9 @@ class WaporAPI(object):
         self.path_jobs = path_jobs
         self.version = version
 
+    #################################
+    # properties
+    #################################
     @property
     def version(self):
         return self._version
@@ -56,8 +62,73 @@ class WaporAPI(object):
             if  value in  [1,2]:
                 self._version = 'WAPOR_{}'.format(value) 
             else:
-                raise AttributeError("version needs to be an int and of of: [1,2]")       
-            
+                raise AttributeError("version needs to be an int and of of: [1,2]")
+
+    #################################
+    # functions
+    #################################
+    def retrieve_catalogue_as_dataframe(
+        self,
+        wapor_level: int,
+        cubeInfo=True):
+        '''
+        Description:
+            retrieves the wapor catalogue from the WaPOR database and formats it as a dataframe
+
+            NOTE: based on and replaces the WaporAPI original class function getCatalog
+
+        Args:
+            wapor_level: level to retrieve the catalogue for
+            cube_info: if true also retrieves and formats the cube info from the catalogue into
+            the output dataframe
+
+        Return:
+            dataframe: dataframe of the retrieved catalogue
+        '''
+        if wapor_level not in [1,2,3]:
+            raise AttributeError("wapor_level (int) needs to be either 1, 2 or 3")
+        try:
+            df = self._query_catalog(wapor_level)
+        except Exception as e:
+            print('ERROR: data of the specified wapor_level could not be retrieved'
+            ' or there was a connection error (wapor_level: {})'.format(wapor_level))
+            raise e
+        
+        if cubeInfo:
+            cubes_measure=[]
+            cubes_dimension=[]
+            for cube_code in df['code'].values:                
+                cubes_measure.append(self._query_cubeMeasures(cube_code,
+                                                                    version=self.version))
+                cubes_dimension.append(self._query_cubeDimensions(cube_code,
+                                                                    version=self.version))
+            df['measure'] = cubes_measure
+            df['dimension'] = cubes_dimension
+
+        df['period_code'] = df['code'].str.split('_').str[-1]
+        df['component_code'] = df['code'].str.split('_').str[-2]
+        df['component_desc'] = df['caption'].str.split('(').str[0]
+
+        df.loc[df['period_code'] == 'LT' ,'period_desc'] = 'Long Term'
+        df.loc[df['period_code'] == 'A' ,'period_desc'] = 'Annual'
+        df.loc[df['period_code'] == 'S' ,'period_desc'] = 'Seasonal'
+        df.loc[df['period_code'] == 'M' ,'period_desc'] = 'Monthly'
+        df.loc[df['period_code'] == 'D' ,'period_desc'] = 'Dekadal'
+        df.loc[df['period_code'] == 'E' ,'period_desc'] = 'Daily'
+
+        if wapor_level == 3:
+            df['country_code'] = df['code'].str.split('_').str[1]
+            df['country_desc'] = df['caption'].str.split('\(').str[-1].str.split('-').str[0]
+
+        df.loc[df['code'].str.contains('QUAL'), 'component_code'] = 'QUAL_' + df['component_code']
+
+        df = df.fillna('NaN')
+
+        print('wapor catalogue retrieved and formatted for use, wapor level: {}'.format(wapor_level))
+
+        return df
+
+    #################################
     def _query_catalog(self,level):
         if level == None:
             request_url = r'{0}{1}/cubes?overview=false&paged=false'.format(self.path_catalog,self.version)
@@ -72,41 +143,63 @@ class WaporAPI(object):
             return df
         except:
             print('ERROR: No response')
-                        
-#    def _query_cubeInfo(self,cube_code):
-#        request_url = r'{0}{1}/cubes/{2}?overview=false'.format(self.path_catalog,
-#        self.version,cube_code)
-#        resp = requests.get(request_url)        
-#        try:
-#            meta_data_items = resp.json()['response']
-#            cube_info=meta_data_items #['additionalInfo']           
-#        except:
-#            cube_info=None
-#        return cube_info
-            
-    def getCubeInfo(self,cube_code):
+
+    #################################
+    def getCubeInfo(
+        self,
+        cube_code: str,
+        wapor_level: int,
+        catalogue: pd.DataFrame=None):
         '''
-        Get cube info
+        Description:
+            check the WaPOR level catalogue for a cube code
+            and related info.
+
+            If provided uses an existing catalogue formatted as a dataframe
+            otherwise retrieves one from the portal.
+
+        Args:
+            cube_code: cube code to query for
+            wapor_level: wapor level of the given catalogue or level to retrieve a catalogue for in case it is missing
+            catalogue: dataframe of a catalogue previously retrieved
+
+        Return:
+            dict: dictionary containing retrieval data (dimensions, measures) related tot he cube code given
         '''
-        try: 
-            catalog=self.catalog
-            if 'measure' not in catalog.columns:
-                catalog=self.getCatalog(cubeInfo=True)
-        except:
-            catalog=self.getCatalog(cubeInfo=True)         
+        if wapor_level not in [1,2,3]:
+            raise AttributeError("wapor_level (int) needs to be either 1, 2 or 3")
+
+        if not isinstance(catalogue, pd.DataFrame):
+            catalogue = self.retrieve_catalogue_as_dataframe(
+                wapor_level=wapor_level,
+                cubeInfo=True)
+
+        elif 'measure' not in catalogue.columns:
+            catalogue= self.retrieve_catalogue_as_dataframe(
+                wapor_level=wapor_level,
+                cubeInfo=True)
+
+        else:
+            pass
+
         try:
-            cube_info=catalog.loc[catalog['code']==cube_code].to_dict('records')[0]         
-            return cube_info
-        except:
-            print('ERROR: Data for specified cube code and version is not available')
+            cube_info=catalogue.loc[catalogue['code']==cube_code].to_dict('records')[0]     
+        except Exception as e:
+            print('ERROR: Data for your given cube code: {} and wapor version: {} could not be found in the catalogue, ' \
+                'please check the catalogue and or your inputs'.format(cube_code, self.version))
+            raise e
+
+        return cube_info
     
+    #################################
     def _query_cubeMeasures(self,cube_code,version=1):
         request_url = r'{0}{1}/cubes/{2}/measures?overview=false&paged=false'.format(self.path_catalog,
                         self.version,cube_code)
         resp = requests.get(request_url)
-        cube_measures = resp.json()['response'][0]    
+        cube_measures = resp.json()['response'][0]
         return cube_measures
     
+    #################################
     def _query_cubeDimensions(self,cube_code,version=1):
         request_url = r'{0}{1}/cubes/{2}/dimensions?overview=false&paged=false'.format(self.path_catalog,
                         self.version,cube_code)
@@ -114,22 +207,61 @@ class WaporAPI(object):
         cube_dimensions = resp.json()['response']
         return cube_dimensions
     
+    #################################
     def _query_accessToken(self,APIToken):
         resp_vp=requests.post(self.path_sign_in,headers={'X-GISMGR-API-KEY':APIToken})
         resp_vp = resp_vp.json()
         self.AccessToken=resp_vp['response']['accessToken']
-        self.RefreshToken=resp_vp['response']['refreshToken']        
-        self.time_expire=resp_vp['response']['expiresIn'] 
+        self.RefreshToken=resp_vp['response']['refreshToken']     
+        self.time_expire=resp_vp['response']['expiresIn']
         return self.AccessToken
     
+    #################################
     def _query_refreshToken(self,RefreshToken):
         resp_vp=requests.post(self.path_refresh,params={'grandType':'refresh_token','refreshToken':RefreshToken})
         resp_vp = resp_vp.json()
         self.AccessToken=resp_vp['response']['accessToken']
         return self.AccessToken        
 
-    def getAvailData(self,cube_code,time_range='2009-01-01,2018-12-31',
-                     location=[],season=[],stage=[]):
+    #################################
+    def get_access_token(
+        self,
+        APIToken: str):
+        """
+        Description:
+            retrieves the accesstoken and if too much time has
+            passed since it was last used refreshes it
+
+            NOTE: Edit of the original code by Roeland de Koning
+
+        Args:
+            APIToken: apitoken used to retrieve the accesstoken
+
+        Return:
+            str: accesstoken
+        """
+        #Get AccessToken
+        self.request_end=datetime.now().timestamp()
+        try:
+            AccessToken=self.AccessToken    
+            if self.request_end-self.request_start > self.time_expire:
+                AccessToken=self._query_refreshToken(self.RefreshToken)
+                self.request_start=self.request_end
+        except:
+            AccessToken=self._query_accessToken(APIToken)
+
+        return AccessToken
+            
+    #################################
+    def getAvailData(
+        self,
+        cube_code,
+        wapor_level: int,
+        time_range='2009-01-01,2018-12-31',
+        location=[],
+        season=[],
+        stage=[],
+        catalogue: pd.DataFrame=None):
         '''
         cube_code: str
             ex. 'L2_CTY_PHE_S'
@@ -146,13 +278,18 @@ class WaporAPI(object):
             ex. ['EOS','SOS']
         '''
         try:
-            cube_info=self.getCubeInfo(cube_code)
+            # get cube info
+            cube_info=self.getCubeInfo(
+                    cube_code=cube_code,
+                    wapor_level=wapor_level,
+                    catalogue=catalogue)
             #get measures    
             measure_code=cube_info['measure']['code']
             #get dimension
             dimensions=cube_info['dimension']
-        except:
-            print('ERROR: Cannot get cube info')
+        except Exception as e:
+            print('cannont get cube info')
+            raise e
             
         dims_ls=[]
         columns_codes=['MEASURES']
@@ -191,9 +328,10 @@ class WaporAPI(object):
     
             df=self._query_availData(cube_code,measure_code,
                              dims_ls,columns_codes,rows_codes)
-        except:
-            print('ERROR:Cannot get list of available data')
-            return None
+        except Exception as e:
+            print('Cannot get list of available data')
+            raise e
+            
         #sorted df
         keys=rows_codes+ ['raster_id','bbox','time_code']
         df_dict = { i : [] for i in keys }
@@ -212,42 +350,44 @@ class WaporAPI(object):
         df_sorted=pd.DataFrame.from_dict(df_dict)
         return df_sorted            
     
+    #################################
     def _query_availData(self,cube_code,measure_code,
                          dims_ls,columns_codes,rows_codes):                
         query_load={
-          "type": "MDAQuery_Table",              
+          "type": "MDAQuery_Table",       
           "params": {
             "properties": {                     
-              "metadata": True,                     
-              "paged": False,                   
+              "metadata": True,            
+              "paged": False,            
             },
             "cube": {                            
-              "workspaceCode": self.version,            
-              "code": cube_code,                       
-              "language": "en"                      
+              "workspaceCode": self.version,  
+              "code": cube_code,              
+              "language": "en"            
             },
             "dimensions": dims_ls,
             "measures": [measure_code],
-            "projection": {                      
-              "columns": columns_codes,                               
+            "projection": {                
+              "columns": columns_codes,                        
               "rows": rows_codes
             }
           }
         }
             
         resp = requests.post(self.path_query, json=query_load)
-        resp_vp = resp.json() 
+        resp_vp = resp.json()
         if resp_vp['message']=='OK':
             try:
                 results=resp_vp['response']['items']
-                return pd.DataFrame(results)  
+                return pd.DataFrame(results)
             except:
                 print('ERROR: Cannot get list of available data')
         else:
             print(resp_vp['message'])
-                
+
+    #################################     
     def _query_dimensionsMembers(self,cube_code,dims_code):
-        base_url='{0}{1}/cubes/{2}/dimensions/{3}/members?overview=false&paged=false'       
+        base_url='{0}{1}/cubes/{2}/dimensions/{3}/members?overview=false&paged=false'
         request_url=base_url.format(self.path_catalog,
                                     self.version,
                                     cube_code,
@@ -264,7 +404,8 @@ class WaporAPI(object):
                 print('ERROR: Cannot get dimensions Members')
         else:
             print(resp_vp['message'])
-        
+    
+    #################################
     def getLocations(self,level=None):
         '''
         level: int
@@ -279,6 +420,7 @@ class WaporAPI(object):
             df_loc=df_loc.loc[df_loc["l{0}".format(level)]==True]        
         return df_loc
     
+    #################################
     def _query_locations(self):
         query_location={
                "type":"TableQuery_GetList_1",
@@ -287,18 +429,18 @@ class WaporAPI(object):
                      "workspaceCode":self.version,
                      "code":"LOCATION"
                   },
-                  "properties":{  
+                  "properties":{
                      "paged":False
-                  },              
-                  "sort":[  
-                     {  
+                  },
+                  "sort":[
+                     {
                         "columnName":"name"
                      }
                   ]
-               }        
-            }                
+               }   
+            }           
         resp = requests.post(self.path_query, json=query_location)
-        resp_vp = resp.json()  
+        resp_vp = resp.json()
         if resp_vp['message']=='OK':
             avail_items=resp_vp['response']
             df_loc = pd.DataFrame.from_dict(avail_items, orient='columns')
@@ -311,21 +453,13 @@ class WaporAPI(object):
         else:
             print(resp_vp['message'])
            
-    
+    #################################
     def getRasterUrl(self,cube_code,rasterId,APIToken):
-        #Get AccessToken
-        self.period_end=datetime.now().timestamp()        
-        try:
-            AccessToken=self.AccessToken    
-            if self.period_end-self.period_start > self.time_expire:
-                AccessToken=self._query_refreshToken(self.RefreshToken)
-                self.period_start=self.period_end
-        except:
-            AccessToken=self._query_accessToken(APIToken)
-            
+        AccessToken = self.get_access_token(APIToken)
         download_url=self._query_rasterUrl(cube_code,rasterId,AccessToken)
         return download_url
-        
+    
+    #################################
     def _query_rasterUrl(self,cube_code,rasterId,AccessToken):
         base_url='{0}{1}'.format(self.path_download,
                   self.version)
@@ -345,7 +479,7 @@ class WaporAPI(object):
         except:
             print('Error: Cannot get Raster URL')
             
-    
+    #################################
     def _query_jobOutput(self,job_url):
         '''
                  
@@ -370,23 +504,25 @@ class WaporAPI(object):
                 contiue=False
                 print(resp['response']['log'])
                 
-                
-    def getCropRasterURL(self,bbox,cube_code,
-                          time_code,rasterId,APIToken,season=None,stage=None,print_job=False):
+    #################################      
+    def getCropRasterURL(
+        self,
+        bbox,
+        cube_code,
+        wapor_level: int,
+        time_code,
+        rasterId,
+        APIToken,
+        season=None,
+        stage=None,
+        print_job=False,
+        catalogue: pd.DataFrame=None):
         '''
         bbox: str
             latitude and longitude
             [xmin,ymin,xmax,ymax]
         '''
-        #Get AccessToken
-        self.period_end=datetime.now().timestamp()        
-        try:
-            AccessToken=self.AccessToken    
-            if self.period_end-self.period_start > self.time_expire:
-                AccessToken=self._query_refreshToken(self.RefreshToken)
-                self.period_start=self.period_end
-        except:
-            AccessToken=self._query_accessToken(APIToken)
+        AccessToken = self.get_access_token(APIToken)
         #Create Polygon        
         xmin,ymin,xmax,ymax=bbox[0],bbox[1],bbox[2],bbox[3]
         Polygon=[
@@ -397,7 +533,11 @@ class WaporAPI(object):
                   [xmin,ymin]
                 ]
         #Get measure_code and dimension_code
-        cube_info=self.getCubeInfo(cube_code)
+        cube_info=self.getCubeInfo(
+                cube_code=cube_code,
+                wapor_level=wapor_level,
+                catalogue=catalogue)
+
         cube_measure_code=cube_info['measure']['code']
         cube_dimensions=cube_info['dimension']
         
@@ -472,23 +612,22 @@ class WaporAPI(object):
         except:
             print('Error: Cannot get cropped raster URL')
 
-    def getAreaTimeseries(self,shapefile_fh,cube_code,APIToken,
-                          time_range="2009-01-01,2018-12-31"):
+    #################################
+    def getAreaTimeseries(
+        self,
+        shapefile_fh,
+        cube_code,
+        APIToken,
+        wapor_level: int,
+        catalogue: pd.DataFrame=None,
+        time_range="2009-01-01,2018-12-31"):
         '''
         shapefile_fh: str
                     "E:/Area.shp"
         time_range: str
                     "YYYY-MM-DD,YYYY-MM-DD"
         '''
-        #Get AccessToken
-        self.period_end=datetime.now().timestamp()        
-        try:
-            AccessToken=self.AccessToken    
-            if self.period_end-self.period_start > self.time_expire:
-                AccessToken=self._query_refreshToken(self.RefreshToken)
-                self.period_start=self.period_end
-        except:
-            AccessToken=self._query_accessToken(APIToken)
+        AccessToken = self.get_access_token(APIToken)
         #get shapefile info
         import ogr
         dts=ogr.Open(shapefile_fh)
@@ -497,8 +636,12 @@ class WaporAPI(object):
         shape=layer.GetFeature(0).ExportToJson(as_object=True)['geometry']
         shape["properties"]={"name": "EPSG:{0}".format(epsg_code)}
         
-        #get cube info
-        cube_info=self.getCubeInfo(cube_code)
+        # get cube info
+        cube_info=self.getCubeInfo(
+                cube_code=cube_code,
+                wapor_level=wapor_level,
+                catalogue=catalogue)
+
         cube_measure_code=cube_info['measure']['code']
         for dims in cube_info['dimension']:
             if dims['type']=='TIME':
@@ -543,15 +686,24 @@ class WaporAPI(object):
             print('Error: Cannot get job output')
             return None
 
-            
-    def getPixelTimeseries(self,pixelCoordinates,cube_code,
-                           time_range="2009-01-01,2018-12-31"):
+    #################################  
+    def getPixelTimeseries(
+        self,
+        pixelCoordinates,
+        cube_code,
+        wapor_level: int,
+        time_range="2009-01-01,2018-12-31",
+        catalogue: pd.DataFrame=None,):
         '''
         pixelCoordinates: list
             [37.95883206252312, 7.89534]
         '''
-        #get cube info
-        cube_info=self.getCubeInfo(cube_code)
+        # get cube info
+        cube_info=self.getCubeInfo(
+                cube_code=cube_code,
+                wapor_level=wapor_level,
+                catalogue=catalogue)
+
         cube_measure_code=cube_info['measure']['code']
         for dims in cube_info['dimension']:
             if dims['type']=='TIME':
@@ -596,21 +748,6 @@ class WaporAPI(object):
                 return None
         else:
             print(resp_vp['message'])
-
-
-    def check_locational_availability(self,level: int, bbox: tuple):
-        locations = self.getLocations(level=level)
-        locations.drop('l1', 'l2', 'l3')
-        if level == 3:
-            print('to check if level 3 data is available for your given shapefile reference the list below')
-            print(locations)
-            print('or check out the WAPOR site directly: https://wapor.apps.fao.org/home/WAPOR_2/1')
-        else:
-            print('locational check will come here')
-            
-        return
-
-            
 
             
 

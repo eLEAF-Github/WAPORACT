@@ -51,32 +51,25 @@ class WaporPAI(WaporRetrieval):
         self,
         waporact_directory: str,
         shapefile_path: str,
-        api_token: str,
         wapor_level: int,
+        period_start: datetime,
+        period_end: datetime,
+        api_token: str,
         project_name: int = 'test',
-        period_start: datetime = datetime.now() - timedelta(days=1),
-        period_end: datetime = datetime.now(),
         return_period: str = 'D',
         silent: bool = False
     ):
-        self.waporact_directory = waporact_directory
-        self.project_name = project_name
-        self.shapefile_path = shapefile_path
-        self.wapor_level = wapor_level
-        self.period_start = period_start
-        self.period_end = period_end
-        self.return_period = return_period
-        self.api_token = api_token
-        self.silent = silent
 
         super().__init__(
-            waporact_directory=self.waporact_directory,
-            project_name=self.project_name,
-            shapefile_path=self.shapefile_path,
-            wapor_level=self.wapor_level,
-            return_period=self.return_period,
-            api_token=self.api_token,
-            silent=self.silent,
+            waporact_directory=waporact_directory,
+            project_name=project_name,
+            shapefile_path=shapefile_path,
+            wapor_level=wapor_level,
+            period_start=period_start,
+            period_end=period_end,
+            return_period=return_period,
+            api_token=api_token,
+            silent=silent,
             )
 
 
@@ -89,7 +82,7 @@ class WaporPAI(WaporRetrieval):
         numpy_function: FunctionType,
         mask_raster_path: str,
         aoi_name: str,
-        statistic: str,     
+        statistic: str,
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str = None,
@@ -122,17 +115,14 @@ class WaporPAI(WaporRetrieval):
         Return:
             str: path to the produced raster
         """
-        if not period_start:
-            period_start=self.period_start
-        if not period_end:
-            period_end = self.period_end
-        if not return_period:
-            return_period = self.return_period
-
+        self.period_start = period_start
+        self.period_end = period_end
+        self.return_period = return_period
+        
         output_raster_path =self.generate_output_file_path(
             description='{}-{}'.format(datacomponent, statistic),
-            period_start=period_start,
-            period_end=period_end,
+            period_start=self.period_start,
+            period_end=self.period_end,
             output_folder='analysis',
             aoi_name=aoi_name,
             ext='.tif'
@@ -140,13 +130,13 @@ class WaporPAI(WaporRetrieval):
 
         if not os.path.exists(output_raster_path):
             print('retrieving {} data between {} and {} for aoi (mask): {}'.format(
-                datacomponent, period_start, period_end, aoi_name))
+                datacomponent, self.period_start, self.period_end, aoi_name))
 
             retrieved_data = self.download_wapor_rasters(
                     datacomponents=[datacomponent],
-                    period_start=period_start,
-                    period_end=period_end,
-                    return_period=return_period,
+                    period_start=self.period_start,
+                    period_end=self.period_end,
+                    return_period=self.return_period,
                     aoi_name=aoi_name,
                     template_raster_path=mask_raster_path
                     )
@@ -432,19 +422,16 @@ class WaporPAI(WaporRetrieval):
 
         Return:
             tuple: path to the relative evapotranspiration raster, dict of field statistics
-        """        
-        if not period_start:
-            period_start=self.period_start
-        if not period_end:
-            period_end = self.period_end
-        if not return_period:
-            return_period = self.return_period
+        """ 
+        self.period_start = period_start
+        self.period_end = period_end
+        self.return_period = return_period
 
         # create standardised relative evapotranspiration file name
         relative_evapotranspiration_raster_path = self.generate_output_file_path(
             description='ret',
-            period_start=period_start,
-            period_end=period_end,
+            period_start=self.period_start,
+            period_end=self.period_end,
             output_folder='results',
             aoi_name=aoi_name,
             ext='.tif',
@@ -453,14 +440,14 @@ class WaporPAI(WaporRetrieval):
         if not os.path.exists(relative_evapotranspiration_raster_path):
             # retrieve and calculate sum of evapotranspiration for the given period
             evapotranspiration = self.retrieve_and_analyse_period_of_wapor_rasters(
-                    period_start=period_start,
-                    period_end=period_end,
+                    period_start=self.period_start,
+                    period_end=self.period_end,
                     datacomponent= 'AETI',
                     numpy_function=np.nansum,
                     mask_raster_path=mask_raster_path,
                     aoi_name=aoi_name,
                     statistic='sum',
-                    return_period=return_period,
+                    return_period=self.return_period,
                     output_nodata=output_nodata)  
 
             # calculate potential evapotranspiration for the given period
@@ -499,8 +486,8 @@ class WaporPAI(WaporRetrieval):
             id_key=id_key,
             zmin=0, 
             zmax=1, 
-            period_start=period_start,
-            period_end=period_end,
+            period_start=self.period_start,
+            period_end=self.period_end,
             output_static_map=output_static_map,
             output_interactive_map=output_interactive_map,
             output_csv=output_csv)
@@ -515,7 +502,7 @@ class WaporPAI(WaporRetrieval):
         aoi_name: str,
         period_start: datetime=None,
         period_end: datetime=None,
-        return_period: str = 'D',
+        return_period: str = None,
         percentile: int = 95,
         output_nodata:float = -9999,
         field_stats: list = ['mean'],
@@ -523,15 +510,16 @@ class WaporPAI(WaporRetrieval):
         ):
         """
         Description:
-            calculate the relative evapotranspiration score per dekad for the 
+            calculate the relative evapotranspiration score per dekad for the
             given period to test for reliability
-            per cell for the given period and area as 
+            per cell for the given period and area as
             defined by the class shapefile
 
-            temporal relative evapotranspiration: 
-                Sum of Evapotranspiration / Potential evapotranspiration per dekad as a time series
+            temporal relative evapotranspiration:
+                Sum of Evapotranspiration / Potential evapotranspiration per return period as a time series
 
             NOTE: Field shapefile is required
+            NOTE: dekad is the recommended return period
 
         Args:
             self: (see class for details)
@@ -555,16 +543,15 @@ class WaporPAI(WaporRetrieval):
         Return:
             tuple: path to the temporal variation in relative evapotranspiration raster, dict of field statistics
         """
-        if not period_start:
-            period_start=self.period_start
-        if not period_end:
-            period_end = self.period_end
+        self.period_start = period_start
+        self.period_end = period_end
+        self.return_period = return_period
 
         # create standardised temporal relative evapotranspiration file name
         temporal_relative_evapotranspiration_vrt_path = self.generate_output_file_path(
             description='tret',
-            period_start=period_start,
-            period_end=period_end,
+            period_start=self.period_start,
+            period_end=self.period_end,
             output_folder='results',
             aoi_name=aoi_name,
             ext='.vrt',
@@ -573,8 +560,8 @@ class WaporPAI(WaporRetrieval):
         # if true output the results to a csv and use it to create an interactive map if applicable
         tret_csv_filepath = self.generate_output_file_path(
             description='tret',
-            period_start=period_start,
-            period_end=period_end,
+            period_start=self.period_start,
+            period_end=self.period_end,
             output_folder='results',
             aoi_name=aoi_name,
             ext='.csv',
@@ -585,9 +572,9 @@ class WaporPAI(WaporRetrieval):
 
             # setup download to be carried out per year depending on the requested dates
             date_tuples = self.wapor_organise_request_dates_per_year(
-                period_start=period_start,
-                period_end=period_end,
-                return_period=return_period
+                period_start=self.period_start,
+                period_end=self.period_end,
+                return_period=self.return_period,
             )
 
             # setup download variables
@@ -604,7 +591,7 @@ class WaporPAI(WaporRetrieval):
                     datacomponents=['AETI'],
                     period_start=dt[0],
                     period_end=dt[1],
-                    return_period=return_period,
+                    return_period=self.return_period,
                     aoi_name=aoi_name)
 
                 retrieval_info_list.extend(retrieval_info)
@@ -643,8 +630,8 @@ class WaporPAI(WaporRetrieval):
             # calculate the max actual evapotranspiration scored throughout the period using the specified numpy statistical function
             highest_actual_evapotranspiration = self.generate_output_file_path(
                 description='max_aeti',
-                period_start=period_start,
-                period_end=period_end,
+                period_start=self.period_start,
+                period_end=self.period_end,
                 output_folder='analysis',
                 aoi_name=aoi_name,
                 ext='.tif')
@@ -732,8 +719,8 @@ class WaporPAI(WaporRetrieval):
 
         scatterplot_html = self.generate_output_file_path(
                 description='tret',
-                period_start=period_start,
-                period_end=period_end,
+                period_start=self.period_start,
+                period_end=self.period_end,
                 output_folder='images',
                 aoi_name=aoi_name,
                 ext='.html',
@@ -741,8 +728,8 @@ class WaporPAI(WaporRetrieval):
 
         scatterplot_png = self.generate_output_file_path(
                 description='tret',
-                period_start=period_start,
-                period_end=period_end,
+                period_start=self.period_start,
+                period_end=self.period_end,
                 output_folder='images',
                 aoi_name=aoi_name,
                 ext='.png',
@@ -753,7 +740,7 @@ class WaporPAI(WaporRetrieval):
             x='time_step',
             y='mean_ret',
             title='Temporal variation in relative evapotranspiration: {} - {}'.format(period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')),
-            x_label ='time_steps: {}'.format(return_period),
+            x_label ='time_steps: {}'.format(self.return_period),
             y_label='mean_ret',
             color='wpid',
             output_html_path=scatterplot_html,
@@ -812,17 +799,14 @@ class WaporPAI(WaporRetrieval):
         Return:
             tuple: path to the crop_water_deficit raster,  dict of field stats
         """
-        if not period_start:
-            period_start=self.period_start
-        if not period_end:
-            period_end = self.period_end
-        if not return_period:
-            return_period = self.return_period
+        self.period_start = period_start
+        self.period_end = period_end
+        self.return_period = return_period
 
         # create standardised crop_water_deficit file name
         crop_water_deficit_raster_path = self.generate_output_file_path(
             description='cwd',
-            period_start=period_start,
+            period_start=self.period_start,
             period_end=period_end,
             output_folder='results',
             aoi_name=aoi_name,
@@ -832,14 +816,14 @@ class WaporPAI(WaporRetrieval):
         if not os.path.exists(crop_water_deficit_raster_path):
             # retrieve and calculate sum of evapotranspiration for the given period
             evapotranspiration = self.retrieve_and_analyse_period_of_wapor_rasters(
-                    period_start=period_start,
-                    period_end=period_end,
+                    period_start=self.period_start,
+                    period_end=self.period_end,
                     datacomponent= 'AETI',
                     numpy_function=np.nansum,
                     mask_raster_path=mask_raster_path,
                     aoi_name=aoi_name,
                     statistic='sum',
-                    return_period=return_period,
+                    return_period=self.return_period,
                     output_nodata=output_nodata)  
 
             # calculate potential evapotranspiration for the given period
@@ -877,8 +861,8 @@ class WaporPAI(WaporRetrieval):
             field_stats=field_stats,
             aoi_name=aoi_name,
             id_key=id_key,
-            period_start=period_start,
-            period_end=period_end,
+            period_start=self.period_start,
+            period_end=self.period_end,
             output_static_map=output_static_map,
             output_interactive_map=output_interactive_map,
             output_csv=output_csv)
@@ -932,18 +916,15 @@ class WaporPAI(WaporRetrieval):
         Return:
             tuple: path to the beneficial fraction raster, (dataframe/dict, csv of field statistics)
         """
-        if not period_start:
-            period_start=self.period_start
-        if not period_end:
-            period_end = self.period_end
-        if not return_period:
-            return_period = self.return_period
+        self.period_start = period_start
+        self.period_end = period_end
+        self.return_period = return_period
 
         # create standardised beneficial fraction file name
         beneficial_fraction_raster_path = self.generate_output_file_path(
             description='bf',
-            period_start=period_start,
-            period_end=period_end,
+            period_start=self.period_start,
+            period_end=self.period_end,
             output_folder='results',
             aoi_name=aoi_name,
             ext='.tif',
@@ -952,26 +933,26 @@ class WaporPAI(WaporRetrieval):
         if not os.path.exists(beneficial_fraction_raster_path):
             # retrieve and calculate average of evapotranspiration for the given period
             sum_evapotranspiration = self.retrieve_and_analyse_period_of_wapor_rasters(
-                    period_start=period_start,
-                    period_end=period_end,
+                    period_start=self.period_start,
+                    period_end=self.period_end,
                     datacomponent= 'AETI',
                     numpy_function=np.nansum,
                     mask_raster_path=mask_raster_path,
                     aoi_name=aoi_name,
                     statistic='sum',
-                    return_period=return_period,
+                    return_period=self.return_period,
                     output_nodata=output_nodata)  
              
             # retrieve and calculate average of evapotranspiration for the given period
             sum_transpiration = self.retrieve_and_analyse_period_of_wapor_rasters(
-                    period_start=period_start,
-                    period_end=period_end,
+                    period_start=self.period_start,
+                    period_end=self.period_end,
                     datacomponent= 'T',
                     numpy_function=np.nansum,
                     mask_raster_path=mask_raster_path,
                     aoi_name=aoi_name,
                     statistic='sum',
-                    return_period=return_period,
+                    return_period=self.return_period,
                     output_nodata=output_nodata)
   
             # calculate beneficial_fraction for the given period (AETI/POTET)
@@ -1003,8 +984,8 @@ class WaporPAI(WaporRetrieval):
             id_key=id_key,
             zmin=0,
             zmax=1,
-            period_start=period_start,
-            period_end=period_end,
+            period_start=self.period_start,
+            period_end=self.period_end,
             output_static_map=output_static_map,
             output_interactive_map=output_interactive_map,
             output_csv=output_csv)
@@ -1057,23 +1038,20 @@ class WaporPAI(WaporRetrieval):
         Return:
             tuple: None ,  dict
         """
-        if not period_start:
-            period_start=self.period_start
-        if not period_end:
-            period_end = self.period_end
-        if not return_period:
-            return_period = self.return_period
+        self.period_start = period_start
+        self.period_end = period_end
+        self.return_period = return_period
 
         # retrieve and calculate average of evapotranspiration for the given period
         sum_evapotranspiration_raster_path = self.retrieve_and_analyse_period_of_wapor_rasters(
-                period_start=period_start,
-                period_end=period_end,
+                period_start=self.period_start,
+                period_end=self.period_end,
                 datacomponent= 'AETI',
                 numpy_function=np.nansum,
                 mask_raster_path=mask_raster_path,
                 aoi_name=aoi_name,
                 statistic='sum',
-                return_period=return_period,
+                return_period=self.return_period,
                 output_nodata=output_nodata)
 
         print('Calculating cov field statistics...')
@@ -1111,8 +1089,8 @@ class WaporPAI(WaporRetrieval):
 
         csv_filepath = self.generate_output_file_path(
             description='cov',
-            period_start=period_start,
-            period_end=period_end,
+            period_start=self.period_start,
+            period_end=self.period_end,
             output_folder='results',
             aoi_name=aoi_name,
             ext='.csv',
@@ -1124,8 +1102,8 @@ class WaporPAI(WaporRetrieval):
 
         shapeplot_filepath = self.generate_output_file_path(
             description='cov_fields',
-            period_start=period_start,
-            period_end=period_end,
+            period_start=self.period_start,
+            period_end=self.period_end,
             output_folder='images',
             aoi_name=aoi_name,
             ext='.png',
@@ -1147,8 +1125,8 @@ class WaporPAI(WaporRetrieval):
             # if true create and output an interactive map
             shapeplot_html = self.generate_output_file_path(
                 description='cov_fields',
-                period_start=period_start,
-                period_end=period_end,
+                period_start=self.period_start,
+                period_end=self.period_end,
                 output_folder='images',
                 aoi_name=aoi_name,
                 ext='.html',
@@ -1218,12 +1196,9 @@ class WaporPAI(WaporRetrieval):
         Return:
             tuple: list of paths to the performance indicator rasters,  csv of combined pai field statistics
         """
-        if not period_start:
-            period_start=self.period_start
-        if not period_end:
-            period_end = self.period_end
-        if not return_period:
-            return_period = self.return_period
+        self.period_start = period_start
+        self.period_end = period_end
+        self.return_period = return_period
 
         pai_rasters = []
 
@@ -1234,9 +1209,9 @@ class WaporPAI(WaporRetrieval):
             mask_raster_path=mask_raster_path,
             fields_shapefile_path=fields_shapefile_path,
             aoi_name=aoi_name,
-            period_start=period_start,
-            period_end=period_end,
-            return_period=return_period,
+            period_start=self.period_start,
+            period_end=self.period_end,
+            return_period=self.return_period,
             output_nodata=output_nodata,
             id_key=id_key,
             output_static_map=output_static_map,
@@ -1252,9 +1227,9 @@ class WaporPAI(WaporRetrieval):
             mask_raster_path=mask_raster_path,
             fields_shapefile_path=fields_shapefile_path,
             aoi_name=aoi_name,
-            period_start=period_start,
-            period_end=period_end,
-            return_period=return_period,
+            period_start=self.period_start,
+            period_end=self.period_end,
+            return_period=self.return_period,
             output_nodata=output_nodata,
             id_key=id_key,
             output_static_map=output_static_map,
@@ -1269,9 +1244,9 @@ class WaporPAI(WaporRetrieval):
             mask_raster_path=mask_raster_path,
             fields_shapefile_path=fields_shapefile_path,
             aoi_name=aoi_name,
-            period_start=period_start,
-            period_end=period_end,
-            return_period=return_period,
+            period_start=self.period_start,
+            period_end=self.period_end,
+            return_period=self.return_period,
             output_nodata=output_nodata,
             id_key=id_key,
             output_static_map=output_static_map,
@@ -1286,9 +1261,9 @@ class WaporPAI(WaporRetrieval):
             mask_raster_path=mask_raster_path,
             fields_shapefile_path=fields_shapefile_path,
             aoi_name=aoi_name,
-            period_start=period_start,
-            period_end=period_end,
-            return_period=return_period,
+            period_start=self.period_start,
+            period_end=self.period_end,
+            return_period=self.return_period,
             output_nodata=output_nodata,
             id_key=id_key,)
 
@@ -1302,9 +1277,9 @@ class WaporPAI(WaporRetrieval):
                 mask_raster_path=mask_raster_path,
                 fields_shapefile_path=fields_shapefile_path,
                 aoi_name=aoi_name,
-                period_start=period_start,
-                period_end=period_end,
-                return_period=return_period,
+                period_start=self.period_start,
+                period_end=self.period_end,
+                return_period=self.return_period,
                 output_nodata=output_nodata,
                 id_key=id_key)[1]
 
@@ -1314,8 +1289,8 @@ class WaporPAI(WaporRetrieval):
             # create standardised performance indicator stats file name
             pai_csv_filepath = self.generate_output_file_path(
                 description='pai',
-                period_start=period_start,
-                period_end=period_end,
+                period_start=self.period_start,
+                period_end=self.period_end,
                 output_folder='results',
                 aoi_name=aoi_name,
                 ext='.csv',
@@ -1340,8 +1315,8 @@ class WaporPAI(WaporRetrieval):
 
             pai_shapefile_path = self.generate_output_file_path(
                     description='pai',
-                    period_start=period_start,
-                    period_end=period_end,
+                    period_start=self.period_start,
+                    period_end=self.period_end,
                     output_folder='results',
                     aoi_name=aoi_name,
                     ext='.shp',

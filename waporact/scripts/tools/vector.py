@@ -41,12 +41,12 @@ def file_to_records(
     """
     Description:
         reads in a file (shapefile, excel, csv, json, dataframe) and
-        extracts them to  according to the specifications as 
+        extracts them to  according to the specifications as
         a dataframe or dict. If dict it filters the rows (values)
-        out and stores them as dicts according to 
+        out and stores them as dicts according to
         key (column name), value (column, row item)
 
-        NOTE: if a dataframe is passed the whole process is skipped 
+        NOTE: if a dataframe is passed the whole process is skipped
         and the dataframe is outputted again
 
         NOTE: filter only works for dict at this time
@@ -55,16 +55,16 @@ def file_to_records(
         table: path to the file of interest
         column_mapping: mapping for the columns to dict keys
         default values: default values to use for keys if no
-        value is found 
+        value is found
         sep: sep to use if reading from csv
-        filter: dict of a key (column) and value to filter the 
+        filter: dict of a key (column) and value to filter the
         retrieved dicts by
         output_crs: output crs if retrieving from shapefile
         sheet: sheet to use if retrieving from excel
         to_dict: if True returns a list of dicts per geom/record
 
     Return:
-        list, dataframe, geodataframe : extracted records mapped from the file   
+        list, dataframe, geodataframe : extracted records mapped from the file
     """
     if isinstance(table, pd.DataFrame):
         records = table
@@ -394,7 +394,7 @@ def shape_reprojection(
     Return:
         str: the path to the reprojected shapefile
     """
-    if output_name is '':
+    if output_name == '':
         output_name = os.path.splitext(os.path.basename(shapefile_path))[0]
 
     output_shp = os.path.join(output_directory, "{}_{}_reproject.shp".format(output_name, crs))

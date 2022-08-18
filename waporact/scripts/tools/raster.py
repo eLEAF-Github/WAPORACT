@@ -42,36 +42,70 @@ def reproject_coordinates(x: float, y: float, in_proj: int, out_proj: int):
     Return:
         tuple: transformed /p projected value x and y
     """
-    in_crs = osr.SpatialReference()
-    in_crs.ImportFromEPSG(in_proj)
-    out_crs = osr.SpatialReference()
-    out_crs.ImportFromEPSG(out_proj)
-    
-    transf = osr.CoordinateTransformation(in_crs,out_crs)
-    x_projected, y_projected = transf.TransformPoint(x,y)[:2]
+    in_srs = osr.SpatialReference()
+    in_srs.ImportFromEPSG(in_proj)
+    out_srs = osr.SpatialReference()
+    out_srs.ImportFromEPSG(out_proj)
 
-    return x_projected, y_projected
+
+    if int(gdal.VersionInfo("VERSION_NUM")) >= 3000000 and hasattr(
+        gdal.osr, "OAMS_TRADITIONAL_GIS_ORDER"
+    ):
+        in_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+        out_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+
+    transf = osr.CoordinateTransformation(in_srs,out_srs)
+    x_reprojected, y_reprojected = transf.TransformPoint(x,y)[:2]
+
+    return x_reprojected, y_reprojected
 
 #################################
-def reproject_extent(extent: list, in_proj: int, out_proj: int):
+def reproject_geotransform(
+    geotransform: list,
+    xsize: int,
+    ysize: int,
+    in_proj: int,
+    out_proj: int):
     """
     Description:
-        transform/ reproject an extent from one projection to another
+        reproject a geotransform from one projection to another
         uses reproject_coordinates
 
-        fromat of the extent: [xmin,ymin, xmax,ymax]
+        format of the extent: [xmin,ymin, xmax,ymax]
+
+        Warning: currently does not account for coverage across hemispheres
+
     Args:
         extent: extent to transform (list or tuple)
         inproj: crs code/value to transform from
         outptoj: crs code/value to transform to
 
     Return:
-        tuple: transformed extent
+        tuple: transformed geotransform
     """
-    xmin_projected, ymin_projected = reproject_coordinates(x=extent[0],y=extent[1],in_proj=in_proj,out_proj=out_proj)
-    xmax_projected, ymax_projected = reproject_coordinates(x=extent[2],y=extent[3],in_proj=in_proj,out_proj=out_proj)
+    xmin = geotransform[0]
+    ymax = geotransform[3]
 
-    return (xmin_projected, ymin_projected,xmax_projected, ymax_projected)
+    xmax = geotransform[0] +  (geotransform[1] * xsize)
+    ymin = geotransform[3] + (geotransform[5] * ysize )
+
+    xmin_reprojected, ymax_reprojected = reproject_coordinates(
+        x=xmin,
+        y=ymax,
+        in_proj=in_proj,
+        out_proj=out_proj)
+
+    xmax_reprojected, ymin_reprojected = reproject_coordinates(
+        x=xmax,
+        y=ymin,
+        in_proj=in_proj,
+        out_proj=out_proj)
+        
+    xres = (xmax_reprojected - xmin_reprojected) / xsize
+    yres = -(ymax_reprojected - ymin_reprojected) / ysize
+
+
+    return (xmin_reprojected, xres, geotransform[2], ymax_reprojected, geotransform[4], yres)
 
 #################################
 def area_of_latlon_pixel(pixel_size, center_lat):
@@ -175,7 +209,7 @@ def set_band_descriptions(raster_file_path: str, band_names: list):
 def gdal_info(raster_path: str, band_num: int=1) -> dict:
     """
     Description:
-        given a raster path builds a dictionary of the rasters metadata retrieved using gdal 
+        given a raster path builds a dictionary of the rasters metadata retrieved using gdal
         python functionality
 
     Args:
@@ -219,7 +253,6 @@ def gdal_info(raster_path: str, band_num: int=1) -> dict:
     metadata['gdal_data_type_code'] = raster_band.DataType
     metadata['gdal_data_type_name'] = gdal.GetDataTypeName(metadata['gdal_data_type_code'])
     metadata['nodata'] = raster_band.GetNoDataValue()
-    metadata['project_window'] = (metadata['xmin'],  metadata['ymax'], metadata['xmax'],  metadata['ymin'])
     metadata['ogr_extent'] = (metadata['xmin'],  metadata['ymin'], metadata['xmax'],  metadata['ymax'])
     metadata['band_count'] = raster.RasterCount
     band_name = raster_band.GetDescription()
@@ -344,11 +377,14 @@ def count_raster_values(
                 value = int(value)
         percentage = round(count / non_nan_cell_count * 100, 3)
         counts_list.append({
-            'value': value , 
-            'count': count, 
+            'value': value ,
+            'count': count,
             'percentage': percentage,
-            'area': count * meta['cell_area'],
+            'area': round((count * meta['cell_area']),3),
             'unit': meta['cell_area_unit']})
+
+    if meta['crs'] == 4326:
+        print('Warning calculated area is an estimate of area im meters_sq based of latlon')
 
     input_raster_path = input_array = None
 
@@ -480,10 +516,12 @@ def array_to_raster(
                 resampleAlg='near',
                 options=creation_options
                 )
+
+            warped_raster.FlushCache()
             
-            warped_raster = None
             check_gdal_open(output_raster_path)
             os.remove(temp_raster_path)
+
 
     set_band_descriptions(
         raster_file_path=output_raster_path,
@@ -541,11 +579,11 @@ def rasterize_shape(
         shapefile_path: path to the shape to rasterize
         output_path: path to output the mask too
         reverse: if True reverse the mask if masking
-        output_nodata: nodata value to use for the output. if action=attribute 
+        output_nodata: nodata value to use for the output. if action=attribute
         make sure you have a fitting nodatavalue
-        output_gdal_datatype: datatype of the output raster. if action=attribute 
+        output_gdal_datatype: datatype of the output raster. if action=attribute
         make sure you have a fitting datatype (6: float, 1: int)
-        column: if provided burns in (uses) the values in the column specified 
+        column: if provided burns in (uses) the values in the column specified
         in the shapefile otherwise 0,1
         all_touched: If True includes all cells touched by a geoemtry in 
         rasterization not just where the line goes through the center of the geom
@@ -618,15 +656,15 @@ def create_polygon_index_dict(
     """
     Description:
         rasterize the features in the shapefile according to the
-        template raster provided and extract the indices corresponding 
+        template raster provided and extract the indices corresponding
         to each feature
 
     Args:
         template_raster_path: path to the raster contianing the metadata needed
         input_shapefile_path: shapefile to retireve raster indices for per feature
-        id_key: name of shapefile column/feature dictionary key providing the feature indices 
+        id_key: name of shapefile column/feature dictionary key providing the feature indices
         wpid is a reliable autogenerated index provided while making the crop mask
-        (note: also handy for joining tables and the crop mask shape/other shapes back later) 
+        (note: also handy for joining tables and the crop mask shape/other shapes back later)
 
     Return:
         dict: dictionary of raster indices per feature index
@@ -665,7 +703,7 @@ def create_values_specific_mask(
         setting it to 1 and all other cells to 0
 
     Args:        
-        mask_values: values to mask the mask too 
+        mask_values: values to mask the mask too
         input_raster_path: path to the raster to mask
         output_mask_raster_path: path to output the 0,1 mask raster too
         can be the same as the input path
@@ -739,7 +777,7 @@ def mask_raster(
     output_nodata: float):
     """
     Description
-        mask a raster using a mask raster 
+        mask a raster using a mask raster
         setting no data value to specified one.
         Raster diemnsions have to match
 
@@ -780,7 +818,7 @@ def mask_raster(
 ############################
 def match_raster(
     match_raster_path: str,
-    input_raster_path: str, 
+    input_raster_path: str,
     output_raster_path: str,
     mask_raster_path: str = None,
     resample_method: str = 'near',
@@ -799,16 +837,16 @@ def match_raster(
         well. this is recommended to be the same raster as the match_raster_path
     
     Args:
-        match_raster_path: path to the raster providing the metadata to match 
+        match_raster_path: path to the raster providing the metadata to match
         the input raster too
         input_raster_path: input raster to alter as needed
         output_raster_path: path to output the output raster too
         mask_raster_path: path to the raster to use to mask the input raster
-        can be the same raster as the match raster (recommended) 
+        can be the same raster as the match raster (recommended)
         resample_method: resample method to use if needed
-        output_crs: output projection of the raster, 
+        output_crs: output projection of the raster,
         if not provided uses the nodata value of the template
-        output_nodata: nodata of the output data, 
+        output_nodata: nodata of the output data,
         if not provided uses the nodata value of the template
         mask_to_template: boolean if True also masks to the template,
         creation_options: creation options for gdal
@@ -832,7 +870,7 @@ def match_raster(
 
     # check if the projection wanted (crs), no data value and dimensions do not match (different to check dimensions)
     if any( a != b for a,b in (
-        (output_crs , input_meta['crs']), 
+        (output_crs , input_meta['crs']),
         (output_nodata, input_meta['nodata']),
         (template_meta['xmin'] , input_meta['xmin']),
         (template_meta['ymax'] , input_meta['ymax']),
@@ -843,27 +881,37 @@ def match_raster(
         (template_meta['xsize'] , input_meta['xsize']),
         (template_meta['ysize'] , input_meta['ysize']))):
 
+        output_geotransform = reproject_geotransform(
+            template_meta['geotransform'],
+            xsize=template_meta['xsize'],
+            ysize=template_meta['ysize'],
+            in_proj=input_meta['crs'],
+            out_proj=output_crs
+        )
+
         output_crs =  "EPSG:{}".format(output_crs)
         input_crs =  "EPSG:{}".format(input_meta['crs'])
-        bounds_crs = "EPSG:{}".format(template_meta['crs'])
+
+        output_xmax = output_geotransform[0] +  (output_geotransform[1] * template_meta['xsize'])
+        output_ymin = output_geotransform[3] + (output_geotransform[5] * template_meta['ysize'])
 
         warped_raster = gdal.Warp(
-            destNameOrDestDS=output_raster_path, 
+            destNameOrDestDS=output_raster_path,
             srcDSOrSrcDSTab=input_raster_path,
             format='Gtiff',
             srcSRS=input_crs,
             dstSRS=output_crs,
             srcNodata=input_meta['nodata'],
             dstNodata=output_nodata,
-            xRes=template_meta['xres'],
-            yRes=template_meta['yres'],
-            outputBounds=template_meta['ogr_extent'],
-            outputBoundsSRS=bounds_crs,
+            xRes=output_geotransform[1], #template_meta['xres'],
+            yRes=output_geotransform[5], #template_meta['yres'],
+            outputBounds=[output_geotransform[0],output_ymin,output_xmax,output_geotransform[3]], #template_meta['ogr_extent'],
+            outputBoundsSRS=output_crs, #bounds_crs,
             resampleAlg=resample_method,
             options=creation_options
         )
 
-        warped_raster = None
+        warped_raster.FlushCache()
 
     else:
         shutil.copy2(src=input_raster_path,dst=output_raster_path)
@@ -893,7 +941,7 @@ def build_vrt(
     action: str='space'):
     """
     Description:
-        builds either a spatial or timeseries vrt 
+        builds either a spatial or timeseries vrt
         using the given rasterlist
 
     Args:
@@ -901,7 +949,7 @@ def build_vrt(
         action: type of vrt to build
             space: combines the rasters together as tiles to make a single image
             (assumes they lie next to each other)
-            time: makes a timeseries out of the rasters 
+            time: makes a timeseries out of the rasters
             (assumes they have the same extent and resolution)
         output_vrt_path: path to output the vrt too
 
@@ -927,6 +975,8 @@ def build_vrt(
         srcDSOrSrcDSTab=raster_list,
         options=vrt_options,
         overwrite=True)
+
+    out_vrt.FlushCache()
 
     check_gdal_open(output_vrt_path)
 

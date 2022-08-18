@@ -7,7 +7,6 @@ used to automatically organise the data when running the retrieval class or exam
 """
 ##########################
 # import packages
-from logging import exception
 import os
 from datetime import datetime, timedelta
 from parse import parse
@@ -79,9 +78,9 @@ class WaporStructure(object):
         period_start: datetime = datetime.now() - timedelta(days=1),
     ):
 
-        self.project_name = project_name
-        self.waporact_directory = waporact_directory
         self.wapor_level = wapor_level
+        self.waporact_directory = waporact_directory
+        self.project_name = project_name
         self.period_start = period_start
         self.period_end = period_end
         self.return_period = return_period
@@ -136,33 +135,8 @@ class WaporStructure(object):
         """
         if value not in [1,2,3]:
             raise AttributeError("wapor_level (int) needs to be either 1, 2 or 3")
-        else:
-            self._wapor_level = value
-
-    #################################
-    @property
-    def project_name(self):
-        return self._project_name
-
-    @project_name.setter
-    def project_name(self,value: int):
-        """
-        Description
-            sets the project name and checks it exists
-
-        Args:
-            value: project name
-
-        Raise:
-            AttributeError: If no name is provided or is not a string
-        """
-        if not isinstance(value, str):
-            raise AttributeError("please provide a project name as str")
-        else:
-            if value=='test':
-                print('using standard project name test')
-            
-            self._project_name = value
+        
+        self._wapor_level = value
 
     #################################
     @property
@@ -191,7 +165,7 @@ class WaporStructure(object):
             if not os.path.exists(value):
                 print('waporact_directory provided does not exist attempting to make it now')
                 try:
-                    os.mkdir(value)
+                    os.makedirs(value)
                 except Exception as e:
                     print('failed to make the waporact directory: {}'.format(value))
                     raise e
@@ -201,6 +175,133 @@ class WaporStructure(object):
         else:
             raise AttributeError
     
+    #################################
+    @property
+    def project_name(self):
+        return self._project_name
+
+    @project_name.setter
+    def project_name(self,value: int):
+        """
+        Description
+            sets the project name and checks it exists
+
+        Args:
+            value: project name
+
+        Raise:
+            AttributeError: If no name is provided or is not a string
+        """
+        if not isinstance(value, str):
+            raise AttributeError("please provide a project name as str")
+        else:
+            if value=='test':
+                print('using standard project name test')
+            
+        self._project_name = value
+
+    #################################
+    @property
+    def period_start(self):
+        return self._period_start
+
+    @period_start.setter
+    def period_start(self,value: datetime):
+        """
+        Description
+            checks and sets/updates the period_start variable
+            if a value is provided
+
+        Args:
+            value: datetime object
+
+        Raise:
+            AttributeError: If no datetime object is provided or found
+        """
+        if not isinstance(value, datetime) and hasattr(self, '_period_start'):
+            pass
+
+        elif isinstance(value, datetime) and hasattr(self, '_period_start'):
+            if value == self.period_start:
+                pass
+            else:
+                print('overwriting class level period start, will be applied to all analysis going forward unless changed again')
+                self._period_start = value
+
+        elif not isinstance(value, datetime) and not hasattr(self, '_period_start'):
+            raise AttributeError("please provide a datetime object for period_start, example: datetime(2020,1,1)")
+
+        else:
+            self._period_start = value
+
+    #################################
+    @property
+    def period_end(self):
+        return self._period_end
+
+    @period_end.setter
+    def period_end(self,value: datetime):
+        """
+        Description
+            checks and sets/updates the period_end variable
+            if a value is provided
+
+        Args:
+            value: datetime object
+
+        Raise:
+            AttributeError: If no datetime object is provided or found
+        """
+        if not isinstance(value, datetime) and hasattr(self, '_period_end'):
+            pass
+
+        elif isinstance(value, datetime) and hasattr(self, '_period_end'):
+            if value == self.period_end:
+                pass
+            else:
+                print('overwriting class level period end, will be applied to all analysis going forward unless changed again')
+                self._period_end = value
+
+        elif not isinstance(value, datetime) and not hasattr(self, '_period_end'):
+            raise AttributeError("please provide a datetime object for period_end, example: datetime(2020,1,1)")
+
+        else:
+            self._period_end = value
+
+    #################################
+    @property
+    def return_period(self):
+        return self._return_period
+
+    @return_period.setter
+    def return_period(self,value: datetime=None):
+        """
+        Description
+            checks and sets/updates the return period variable
+            if a value is provided
+
+        Args:
+            value: return period identifier
+
+        Raise:
+            AttributeError: If no valid indetifier is provided or found
+        """
+        if value not in ['E','D','M','S','A','LT'] and hasattr(self, '_return_period'):
+            pass
+
+        elif value in ['E','D','M','S','A','LT'] and hasattr(self, '_return_period'):
+            if value == self.return_period:
+                pass
+            else:
+                print('overwriting class level return period, will be applied to all analysis going forward unless changed again')
+                self._return_period = value
+
+        elif value not in ['E','D','M','S','A','LT'] and not hasattr(self, '_return_period'):
+            raise AttributeError("return period must be one of currently available options: E: DAY (level 1 only), D: Dekadal, M: Monthly, S: Seasonal, A: Annual, LT: Long Term")
+
+        else:
+            self._return_period = value
+
     #################################
     @property
     def input_folder(self):
@@ -244,14 +345,15 @@ class WaporStructure(object):
             str: path to the output folder matching the keyword
         """
         if value not in ['masked','analysis','images', 'reference', 'results']:
-            raise KeyError('input: output_folder must be one of [masked, analysis, results, images, reports,reference]')
+            raise KeyError('input: output_folder must be one of [masked, analysis, results, images,reference]')
 
         else:
             self._output_folder = self.project[value]
 
     #################################
+    @classmethod
     def generate_dates_dict(
-        self,
+        cls,
         period_start: datetime=None,
         period_end: datetime=None,
         return_period: str=None):
@@ -270,14 +372,9 @@ class WaporStructure(object):
         Return:
             dict: dictionary of date related values
         """
-        if not period_start:
-            period_start = self.period_start
-        if not period_end:
-            period_end = self.period_end
-        if not return_period:
-            return_period = self.return_period
-
-        assert self.return_period in ['D','A','I','M','S'] , "return period (str) needs to be either D, A, I, M, S"
+        assert isinstance(period_start, datetime), 'period_start must be a datetime object'
+        assert isinstance(period_end, datetime), 'period_end must be a datetime object'
+        assert return_period in ['D','M','S','A','LT',], 'return period must be one of: D, M, S, A, LT'
         
         # setup date dict
         dates = {}
@@ -296,19 +393,116 @@ class WaporStructure(object):
         return dates
 
     #################################
-    def generate_wapor_cube_code(
-        self,
-        component: str,
-        return_period:str
+    @classmethod
+    def wapor_organise_request_dates_per_year(
+        cls,
+        period_start: str,
+        period_end: str,
+        return_period: str,
         ):
         """
-        format and return the cube code for querying wapor adding the region code for l3 if needed
-        """
-        if self.wapor_level == 3:
-            component = '{}_{}'.format(self.country_code, component)
-        cube_code=f"L{self.wapor_level}_{component}_{return_period}"
+        Description:
+            class subfunction to organise dates for the function download_wapor_rasters
+            so that rasters can be downloaded per year. Also carries out a check to see if the period
+            specified is long enough for the return period specified
 
-        return cube_code
+        Args:
+            period_start: datetime object start of period to organise
+            period_end: datetime object end of period to organise
+
+        Return:
+            list: list of tuples with the period start and period split between years
+        """
+        assert isinstance(period_start, datetime), 'period_start must be a datetime object'
+        assert isinstance(period_end, datetime), 'period_end must be a datetime object'
+        assert return_period in ['D','M','S','A','LT',], 'return period given {} must be one of: D, M, S, A, LT'.format(return_period)
+        # return period in days to check
+        return_period_dict = {
+                        'D': (10, 'Dekadal'),
+                        'M': (30, 'Monthly'),
+                        'S': (100, 'Seasonal'),
+                        'A': (365, 'Annual'),
+                        'LT': (365, 'Long Term'),
+                    }
+
+        # check if period given is long enough for return_period given
+        return_period_length = return_period_dict[return_period][0]
+        num_days = (period_end - period_start).days
+
+        if not num_days >= return_period_length:
+            raise AssertionError('num_days between given period_start: {} and period_end: {} \
+            are not long enough for the given return_period: {} to assure data retrieval'.format(
+                period_start, period_end, return_period_dict[return_period][1]))
+
+        # check if the period is longer than a year
+        start_year = period_start.year
+        end_year = period_end.year
+        num_calendar_years = end_year - start_year + 1
+
+        if num_calendar_years == 1:
+            date_tuples = [(period_start, period_end)]
+        
+        else:
+            # filter through the years and create datetime period tuples to mine data for
+            days_in_start_year = (datetime(period_start.year,12,31) - period_start).days
+            days_in_end_year = (period_end - datetime(period_end.year,1,1)).days
+            current_year = start_year
+            date_tuples = []
+            skip_year = False # only used in case the first year is combined with the next and the first year is not also the next year
+            for i in range(0, num_calendar_years):
+                if skip_year:
+                    skip_year = False
+                    continue
+                if num_calendar_years == 2:
+                    # only two calendar years in the period
+                    if days_in_start_year >= return_period_length and days_in_end_year >= return_period_length:
+                        # split the download between the two periods within the two calendar years
+                        date_tuples =  [(period_start, datetime(period_start.year,12,31)), 
+                                        (datetime(period_end.year,1,1), period_end)]
+                    else:
+                        # the period in either of the two years is to short so keep the original period
+                        date_tuples = [(period_start, period_end)] 
+
+                    break
+
+                else:        
+                    if i == 0: # the first year
+                        if not days_in_start_year >= return_period_length:
+                            # skip a year as the first calendar year is to short so combined with the following year
+                            current_year += 1
+                            _start = period_start
+                            _end = datetime(current_year,12,31) 
+                            skip_year = True
+                            
+                        else:
+                            _start = period_start
+                            _end = datetime(period_start.year,12,31)
+                        
+                    elif i == num_calendar_years: # if the last year 
+                        if not days_in_end_year >= return_period_length:
+                            #  combine the last two years as the last calendar year is to short so combined with the previous year
+                            current_year -= 1 
+                            if len(date_tuples) == 1:
+                                _start = period_start
+                            else:
+                                _start = datetime(current_year,1,1)
+                            
+                            _end = period_end
+                            date_tuples.pop()
+
+                        else:
+                            _start = datetime(period_end.year,1,1)
+                            _end = period_end
+                    
+                    else:
+                        # its an inbetween year
+                        _start = datetime(current_year,1,1)
+                        _end = datetime(current_year,12,31)
+
+                    date_tuples.append((_start,_end))
+                    current_year += 1
+                
+        return date_tuples
   
     #################################
     def create_standardised_datacomponent_folder(
@@ -593,4 +787,3 @@ class WaporStructure(object):
 
 if __name__ == "__main__":
     start = default_timer()
-

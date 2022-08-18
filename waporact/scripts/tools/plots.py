@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 import contextily as cx
 
 from waporact.scripts.tools import vector
-from waporact.scripts.tools.raster import gdal_info, raster_to_array, reproject_extent
+from waporact.scripts.tools.raster import gdal_info, raster_to_array
 
 
 ##########################
@@ -62,7 +62,7 @@ def roundup_max(value):
 
 ##########################
 def calculate_max_and_min(
-    dataframe: pd.DataFrame, 
+    dataframe: pd.DataFrame,
     column: str):
     """
     Description:
@@ -693,7 +693,7 @@ def piechart(
 ##########################
 def interactive_categorical_map(
     input_shapefile_path: str,
-    input_csv_path: str,
+    input_table: Union[pd.DataFrame,str],
     cat_column: str,
     cat_label: str,
     union_key: str='wpid',
@@ -701,6 +701,7 @@ def interactive_categorical_map(
     colorscale: str = None,
     opacity: float=0.5,
     sep: str=';',
+    sheet=0,
     show_figure: bool=False,
     output_html_path: str=None,
     decrease_size_output_html: bool=False,
@@ -725,7 +726,7 @@ def interactive_categorical_map(
 
     Args:
         input_shapefile_path: path to the input shape,
-        input_csv_path: path to the input csv
+        input_table: dataframe or path to the file to create plot from
         z_column: name of the column in the csv to use for the z value
         z_label: lable for the z value column
         show_map: if true shows the map after running
@@ -736,6 +737,7 @@ def interactive_categorical_map(
         colorscale: colorscale to sue ofr the z axis (Viridis etc)
         opacity: opacity of the features
         sep: seperator used in the provided csv
+        sheet: excel sheet to use if excel is provided
         decrease_size_output_html: if true decreases the size of the output html  by ~3mb
         however an internet connection is required to view it
 
@@ -747,8 +749,15 @@ def interactive_categorical_map(
     else:
         autocolorscale=False
     
-    # retrieve the csv
-    df = pd.read_csv(input_csv_path,sep=sep)
+    # retrieve records from the file
+    if isinstance(input_table, str):
+        df = vector.file_to_records(
+            table=input_table, 
+            sep=sep,
+            sheet=sheet)
+    else:
+        df=input_table
+
     
     # retrieve features from the input shape as a geodataframe
     gdf = vector.file_to_records(input_shapefile_path, output_crs=4326)
@@ -796,7 +805,7 @@ def interactive_categorical_map(
 ##########################
 def interactive_choropleth_map(
     input_shapefile_path: str,
-    input_csv_path: str,
+    input_table: Union[pd.DataFrame,str],
     z_column: str,
     z_label: str,
     show_map: bool=False,
@@ -808,6 +817,7 @@ def interactive_choropleth_map(
     zmax: float=None,
     opacity: float=0.5,
     sep: str=';',
+    sheet:int=0,
     decrease_size_output_html: bool=False,    
     secondary_hovertemplate_inputs: dict=None,
     secondary_hovertemplate_text: str= None,
@@ -833,7 +843,7 @@ def interactive_choropleth_map(
 
     Args:
         input_shapefile_path: path to the input shape,
-        input_csv_path: path to the input csv
+        input_table: dataframe or path to the file to create plot from
         z_column: name of the column in the csv to use for the z value
         z_label: label for the z value column
         show_map: if true shows the map after running
@@ -846,6 +856,7 @@ def interactive_choropleth_map(
         zmax: maximum value for the z color axes, auto set if not provided
         opacity: opacity of the features
         sep: seperator used in the provided csv
+        sheet: excel sheet to use if excel is provided
         decrease_size_output_html: if true decreases the size of the output html  by ~3mb
         however an internet connection is required to view it
         secondary_hovertemplate_inputs: dict containing inputs to add as labels
@@ -862,8 +873,15 @@ def interactive_choropleth_map(
     else:
         autocolorscale=False
     
-    # retrieve the csv
-    df = pd.read_csv(input_csv_path,sep=sep)
+    # retrieve records from the file
+    if isinstance(input_table, str):
+        df = vector.file_to_records(
+            table=input_table, 
+            sep=sep, 
+            sheet=sheet)
+    else:
+        df=input_table
+
     
     # retrieve features from the input shape as a geodataframe
     gdf = vector.file_to_records(input_shapefile_path, output_crs=4326)
@@ -1036,14 +1054,15 @@ def shapeplot(
     output_plot_path: str,
     title: str,
     z_column: str,
-    csv_path: str=None,
+    input_table: Union[pd.DataFrame,str]=None,
     join_column: str=None,
     colorscale: str = 'RdYlGn',
     zmin: float=None,
     zmax: float=None,
     opacity: float=0.5,
     coordinate_axis: bool=False,
-    sep: str = ';'
+    sep: str = ';',
+    sheet: int=0,
     ):
     """
     Description:
@@ -1056,13 +1075,15 @@ def shapeplot(
         output_plot_path: path to output the plot too 
         title: title of the plot
         z_column: column in the shapefile/geojson to use as the z column/axis
-        csv_path: if provided joins the csv to the shapefile using the join key/column
+        input_table: dataframe or path to the file to create the plot from using the join key/column
         join_column: if a csv is provided joins thecsv stats to the shapefile using this
         colorscale: standard colorscale to use (standard options)
         zmin: minimum value on the z axis, autoset based on available values if not provided
         zmax: minimum value on the z axis, autoset based on available values if not provided
         opacity: opacity of the shapes in the plot
         coordinate_axis: if false turns off the x,y axis labels for coordinates
+        sep: seperator used in provided excel
+        sheet: sheet to use if excel provided
 
     Return:
         str: path to the outputted png plot
@@ -1074,9 +1095,17 @@ def shapeplot(
 
     vector_gdf = gpd.read_file(input_shape_path)
 
-    if csv_path and join_column:
+    if input_table and join_column:
         # if a csv and join key are provided join the csv to the sahpefile as well
-        stats_df = pd.read_csv(csv_path,sep=sep)
+        # retrieve records from the file
+        if isinstance(input_table, str):
+            stats_df = vector.file_to_records(
+                table=input_table, 
+                sep=sep,
+                sheet=sheet)
+        else:
+            stats_df=input_table
+
         vector_gdf = vector_gdf.join(stats_df.set_index(join_column), on=join_column)
 
 
@@ -1126,3 +1155,4 @@ def shapeplot(
 if __name__ == "__main__":
     start = default_timer()
     args = sys.argv
+
