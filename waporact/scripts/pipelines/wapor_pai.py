@@ -335,7 +335,7 @@ class WaporPAI(WaporRetrieval):
                     z_column=z_column,
                     zmin=zmin,
                     zmax=zmax,
-                    csv_path=csv_filepath,
+                    input_table=csv_filepath,
                     join_column=id_key)
 
                 print('{} field plot made: {}'.format(title, shapeplot_filepath))
@@ -353,7 +353,7 @@ class WaporPAI(WaporRetrieval):
                     
                     interactive_choropleth_map(
                         input_shapefile_path=fields_shapefile_path,
-                        input_csv_path=csv_filepath,
+                        input_table=csv_filepath,
                         z_column=z_column,
                         z_label=z_label,
                         zmin=zmin,
@@ -1116,7 +1116,7 @@ class WaporPAI(WaporRetrieval):
             z_column='cov',
             zmin=0,
             zmax=0.25,
-            csv_path=csv_filepath,
+            input_table=csv_filepath,
             join_column=id_key)
 
         print('Coefficient of Variation (Equity PAI) field plot made: {}'.format(shapeplot_filepath))
@@ -1134,7 +1134,7 @@ class WaporPAI(WaporRetrieval):
             
             interactive_choropleth_map(
                 input_shapefile_path=fields_shapefile_path,
-                input_csv_path=csv_filepath,
+                input_table=csv_filepath,
                 z_column='cov',
                 z_label='cov',
                 zmin=0,
@@ -1194,7 +1194,7 @@ class WaporPAI(WaporRetrieval):
             output_csv:if true outputs a csv and shape plot file to a standardised location
 
         Return:
-            tuple: list of paths to the performance indicator rasters,  csv of combined pai field statistics
+            tuple: list of paths to the performance indicator rasters,  dict of combined pai field statistics
         """
         self.period_start = period_start
         self.period_end = period_end
@@ -1271,49 +1271,49 @@ class WaporPAI(WaporRetrieval):
 
         print('All raster based PAIs calculated')
 
-        if fields_shapefile_path:
-            # calculate coefficient of variation
-            cov_dict = self.calc_coefficient_of_variation(
-                mask_raster_path=mask_raster_path,
-                fields_shapefile_path=fields_shapefile_path,
-                aoi_name=aoi_name,
-                period_start=self.period_start,
-                period_end=self.period_end,
-                return_period=self.return_period,
-                output_nodata=output_nodata,
-                id_key=id_key)[1]
+        # calculate coefficient of variation
+        cov_dict = self.calc_coefficient_of_variation(
+            mask_raster_path=mask_raster_path,
+            fields_shapefile_path=fields_shapefile_path,
+            aoi_name=aoi_name,
+            period_start=self.period_start,
+            period_end=self.period_end,
+            return_period=self.return_period,
+            output_nodata=output_nodata,
+            id_key=id_key)[1]
 
-            pai_dicts.append(cov_dict)
-            
-            print('combining and exporting all PAI field statistics to a single csv and shapefile...')
-            # create standardised performance indicator stats file name
-            pai_csv_filepath = self.generate_output_file_path(
-                description='pai',
-                period_start=self.period_start,
-                period_end=self.period_end,
-                output_folder='results',
-                aoi_name=aoi_name,
-                ext='.csv',
-            )
+        pai_dicts.append(cov_dict)
+        
+        print('combining and exporting all PAI field statistics to a single csv and shapefile...')
+        # create standardised performance indicator stats file name
+        pai_csv_filepath = self.generate_output_file_path(
+            description='pai',
+            period_start=self.period_start,
+            period_end=self.period_end,
+            output_folder='results',
+            aoi_name=aoi_name,
+            ext='.csv',
+        )
 
-            # merge dictionary of dictionaries using id_key as the join key
-            pai_dict = pai_dicts[0].copy()
-            for base_dict_entry in pai_dict.keys():
-                for _dict in pai_dicts:
-                    for dict_entry in _dict.keys():
-                        if _dict[dict_entry][id_key] == pai_dict[base_dict_entry][id_key]:
-                            for key in list(_dict[dict_entry].keys()):
-                                if key in pai_dict[base_dict_entry].keys():
-                                    pass
-                                else:
-                                    pai_dict[base_dict_entry][key] = _dict[dict_entry][key]
-                    
+        # merge dictionary of dictionaries using id_key as the join key
+        pai_dict = pai_dicts[0].copy()
+        for base_dict_entry in pai_dict.keys():
+            for _dict in pai_dicts:
+                for dict_entry in _dict.keys():
+                    if _dict[dict_entry][id_key] == pai_dict[base_dict_entry][id_key]:
+                        for key in list(_dict[dict_entry].keys()):
+                            if key in pai_dict[base_dict_entry].keys():
+                                pass
+                            else:
+                                pai_dict[base_dict_entry][key] = _dict[dict_entry][key]
+                
 
+        if output_csv:
             statistics.output_table(pai_dict, output_file_path=pai_csv_filepath)
 
             print('Performance indicator field stats calculated and outputted to csv: {}'.format(pai_csv_filepath))
 
-            pai_shapefile_path = self.generate_output_file_path(
+        pai_shapefile_path = self.generate_output_file_path(
                     description='pai',
                     period_start=self.period_start,
                     period_end=self.period_end,
@@ -1322,19 +1322,14 @@ class WaporPAI(WaporRetrieval):
                     ext='.shp',
                 )
 
-            vector.records_to_shapefile(
-                records=pai_dict,
-                output_shapefile_path=pai_shapefile_path,
-                fields_shapefile_path=fields_shapefile_path,
-                union_key="wpid")
+        vector.records_to_shapefile(
+            records=pai_dict,
+            output_shapefile_path=pai_shapefile_path,
+            fields_shapefile_path=fields_shapefile_path,
+            union_key="wpid")
 
-            print('Performance indicator field stats calculated and outputted to shapefile: {}'.format(pai_shapefile_path))
+        print('Performance indicator field stats outputted to shapefile: {}'.format(pai_shapefile_path))
 
-        else:
-            print('no field shapefile provided so no cov calculated or field stats or plots made')
+        return pai_rasters, pai_dict
 
-        return pai_rasters, pai_csv_filepath
 
-if __name__ == "__main__":
-    start = default_timer()
-    args = sys.argv

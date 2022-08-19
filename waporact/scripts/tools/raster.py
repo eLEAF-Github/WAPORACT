@@ -337,6 +337,8 @@ def raster_to_array(input_raster_path: str, band_num: int=1, dtype:str = None, u
 
     if use_nan:
         array = np.where(array == nodata, np.nan, array)
+        array = np.where(array== np.inf, np.nan, array)
+        array = np.where(array == -np.inf, np.nan, array)
 
     input_dataset = input_band = None
     

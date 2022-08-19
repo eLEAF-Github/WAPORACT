@@ -1693,6 +1693,3 @@ class WaporRetrieval(WaporStructure):
             
         return download_dict
 
-if __name__ == "__main__":
-    start = default_timer()
-    args = sys.argv

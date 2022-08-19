@@ -785,5 +785,4 @@ class WaporStructure(object):
 
         return file_dict
 
-if __name__ == "__main__":
-    start = default_timer()
+
