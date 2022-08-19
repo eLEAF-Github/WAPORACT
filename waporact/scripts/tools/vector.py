@@ -1249,6 +1249,3 @@ def raster_to_polygon(
 
     return output_shapefile_path
  
-if __name__ == "__main__":
-    start = default_timer()
-    args = sys.argv

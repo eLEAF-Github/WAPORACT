@@ -1005,9 +1005,3 @@ def mostcommonzaxis(array_stack, **kwargs):
         highest_occurrence = np.where(current_count > highest_occurrence, current_count, highest_occurrence)
 
     return output_array
-
-
-if __name__ == "__main__":
-    start = default_timer()
-    args = sys.argv
-    

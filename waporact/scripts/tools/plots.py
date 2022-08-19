@@ -1151,8 +1151,4 @@ def shapeplot(
 
     return output_plot_path
 
-##########################
-if __name__ == "__main__":
-    start = default_timer()
-    args = sys.argv
 

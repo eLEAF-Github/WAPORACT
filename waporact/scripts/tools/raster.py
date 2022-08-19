@@ -985,8 +985,3 @@ def build_vrt(
         band_names=raster_list)
 
     return output_vrt_path
-
-if __name__ == "__main__":
-    #start = default_timer()
-    #args = sys.argv
-    
