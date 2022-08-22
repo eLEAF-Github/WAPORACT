@@ -12,6 +12,10 @@ For further details see the [wiki](https://github.com/eLEAF-Github/WAPORACT/wiki
 
 WARNING: the wiki is currently outdated since the 0.2.2 release of the package, we are aiming to have it updated by 26/8/2022
 
+## Installation:
+
+see: https://github.com/eLEAF-Github/WAPORACT/wiki/1.-Introduction-4.-WaporAct-Install-Instructions
+
 ## Release Notes
 
 #### 0.2 2022/2/10
@@ -82,7 +86,6 @@ WARNING: the wiki is currently outdated since the 0.2.2 release of the package, 
     - waporact\tutorials\02_waporact_advanced\02B_waporact_calculating_PAIs.ipynb
   - updated waporact_install.txt made to reflect their new packages used by the scripts
   - environment.yml included for a more flexible build if the user wishes
-
 
 NOTE: multiple developments coming this week should be complete 23/8/2022
 
