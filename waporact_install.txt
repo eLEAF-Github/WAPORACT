@@ -1,7 +1,5 @@
 # This file may be used to create an environment using:
 # $ conda create --name <env> --file <this file>
-# platform: win-64
-@EXPLICIT
 python-3.9.12
 gdal-3.0.2
 libgdal-3.0.2
