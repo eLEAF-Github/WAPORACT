@@ -1,4 +1,4 @@
-[[https://github.com/eLEAF-Github/WAPORACT/blob/master/images/wapor_banner.png]]
+![alt text](https://github.com/eLEAF-Github/WAPORACT/blob/master/images/wapor_banner.png?raw=true)
 
 # Water Productivity in practice: WAPORACT  
 _Version 0.2_   
