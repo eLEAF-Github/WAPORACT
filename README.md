@@ -11,12 +11,16 @@ This repo hosts tools to extract, interpret, analyse and visualize open-access g
 
 For further details see the [wiki](https://github.com/eLEAF-Github/WAPORACT/wiki) 
 
+waporact videos will soo be available at: https://www.youtube.com/c/WaterPIPproject 
+
 
 WARNING: the wiki is currently outdated since the 0.2.2 release of the package, we are aiming to have it updated by 26/8/2022
 
 ## Installation:
 
 see: https://github.com/eLEAF-Github/WAPORACT/wiki/1.-Introduction-4.-WaporAct-Install-Instructions
+
+an installation video will soon be available at: https://www.youtube.com/c/WaterPIPproject 
 
 ## Release Notes
 
