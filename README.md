@@ -1,3 +1,5 @@
+[[https://github.com/eLEAF-Github/WAPORACT/blob/master/images/wapor_banner.png]]
+
 # Water Productivity in practice: WAPORACT  
 _Version 0.2_   
 _2022/2/10_
