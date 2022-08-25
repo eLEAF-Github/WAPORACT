@@ -93,9 +93,6 @@ an installation video will soon be available at: https://www.youtube.com/watch?v
   - updated waporact_install.txt made to reflect their new packages used by the scripts
   - environment.yml included for a more flexible build if the user wishes
 
-NOTE: multiple developments coming this week should be complete 23/8/2022
-
-
 #### 0.2.3 2022/8/25
 
 - removal of install txt file and update of environment.yml install method
