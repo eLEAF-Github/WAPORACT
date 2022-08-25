@@ -20,7 +20,7 @@ WARNING: the wiki is currently outdated since the 0.2.2 release of the package, 
 
 see: https://github.com/eLEAF-Github/WAPORACT/wiki/1.-Introduction-4.-WaporAct-Install-Instructions
 
-an installation video will soon be available at: https://www.youtube.com/c/WaterPIPproject 
+an installation video will soon be available at: https://www.youtube.com/watch?v=SRl9dMZ6lbI 
 
 ## Release Notes
 
@@ -82,7 +82,7 @@ an installation video will soon be available at: https://www.youtube.com/c/Water
     - inf in array set to nan
     - gdal warp no output fixed by setting output geotransform
     - etc
-  -  imporved error messages in case there was an error during running, specifically retrieval/ wapor database error messages improved
+  -  improved error messages in case there was an error during running, specifically retrieval/ wapor database error messages improved
   - Performance Assesment Indicator tutorial notebook released
   - 01B_basic_statistical_analysis renamed to 01B_basic_statistical_analysis_and_plotting to better reflect content
   - tutorial notebooks reorganised to better reflect their difficulty:
@@ -95,14 +95,20 @@ an installation video will soon be available at: https://www.youtube.com/c/Water
 
 NOTE: multiple developments coming this week should be complete 23/8/2022
 
+
+#### 0.2.3 2022/8/25
+
+- removal of install txt file and update of environment.yml install method
+- install tutorial video: https://www.youtube.com/watch?v=SRl9dMZ6lbI
+- running tutorial 1A video: https://www.youtube.com/watch?v=pRh1BG_PGjQ
+- bug fix pandas to_csv index=false instead of read_csv index=false
+
 ## In Development 
 
-- install tutorial video
-- running tutorial 1A video
 - running tutorial 1B video
 - running tutorial 2A video
 - running tutorial 2B video
-- update of wiki content to match the 0.2.2 waporact package 
+- update of wiki content to match the 0.2.3 waporact package 
 - automated reporting functionality
 - crop yield factor pipeline and notebook (possibility)
 
