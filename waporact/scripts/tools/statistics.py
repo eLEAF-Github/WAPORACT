@@ -141,7 +141,7 @@ def output_table(
     
     for out_path, outf, out_process in output_paths:
         if outf == '.csv':
-            output_df.to_csv(out_path, sep=csv_seperator)
+            output_df.to_csv(out_path, sep=csv_seperator, index=False)
         else:
             out_process(output_df, out_path)
     
@@ -349,7 +349,7 @@ def calc_field_statistics(
             stats_csv = dict_to_dataframe(in_dict=stats)
         else:
             stats_csv = stats 
-        stats_csv.to_csv(output_csv_path, sep = ';')
+        stats_csv.to_csv(output_csv_path, sep = ';', index=False)
         print('sep used for the csv is: ;')
 
         print('csv outputted too: {}'.format(output_csv_path))

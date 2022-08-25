@@ -83,7 +83,7 @@ def file_to_records(
             df = pd.read_excel(table,sheet_name=sheet)
 
         elif ext == '.csv':
-            df = pd.read_csv(table,sep=sep,index=False)
+            df = pd.read_csv(table,sep=sep)
 
         elif ext == '.json':
             df = pd.read_json(table)
