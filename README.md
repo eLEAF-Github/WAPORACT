@@ -16,7 +16,7 @@ waporact videos will soo be available at: https://www.youtube.com/c/WaterPIPproj
 
 WARNING: the wiki is currently outdated since the 0.2.2 release of the package, we are aiming to have it updated by 26/8/2022
 
-Views: [![HitCount](https://hits.dwyl.com/operations@eleafcom/https://githubcom/eLEAF-Github/WAPORACT.svg?style=flat-square)](http://hits.dwyl.com/operations@eleafcom/https://githubcom/eLEAF-Github/WAPORACT)
+Views: [![HitCount](https://hits.dwyl.com/operations@eleafcom/eLEAF-Github/WAPORACT.svg?style=flat-square)](http://hits.dwyl.com/operations@eleafcom/eLEAF-Github/WAPORACT)
 
 ## Installation:
 
