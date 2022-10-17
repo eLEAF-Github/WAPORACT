@@ -14,7 +14,7 @@ For further details see the [wiki](https://github.com/eLEAF-Github/WAPORACT/wiki
 waporact videos will soo be available at: https://www.youtube.com/c/WaterPIPproject 
 
 
-WARNING: the wiki is currently outdated since the 0.2.2 release of the package, we are aiming to have it updated by 26/8/2022
+WARNING: the wiki is currently outdated since the 0.2.2 release of the package
 
 ## Installation:
 
