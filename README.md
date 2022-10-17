@@ -16,6 +16,8 @@ waporact videos will soo be available at: https://www.youtube.com/c/WaterPIPproj
 
 WARNING: the wiki is currently outdated since the 0.2.2 release of the package
 
+[![HitCount](https://hits.dwyl.com/operations@eleafcom/eLEAF-Github/WAPORACT.svg?style=flat-square)](http://hits.dwyl.com/operations@eleafcom/eLEAF-Github/WAPORACT) 
+
 ## Installation:
 
 see: https://github.com/eLEAF-Github/WAPORACT/wiki/1.-Introduction-4.-WaporAct-Install-Instructions
@@ -100,14 +102,26 @@ an installation video will soon be available at: https://www.youtube.com/watch?v
 - running tutorial 1A video: https://www.youtube.com/watch?v=pRh1BG_PGjQ
 - bug fix pandas to_csv index=false instead of read_csv index=false
 
+#### 0.2.3 2022/10/13
+
+- view counter added to readme
+- logging implemented replacing print
+- string formatting and code reformatting implemented
+- restructuring of retrieval script code into sub scripts
+- rewrite vector based fucntions to accept allv ectors instead of only shapefiles where possible
+- docstings updated to numpy style
+- date bug that prevented february data retrieval fixed (date check was too strongly implemented)
+
 ## In Development 
 
 - running tutorial 1B video
 - running tutorial 2A video
 - running tutorial 2B video
+- docstings updated to numpy style (complete this)
 - update of wiki content to match the 0.2.3 waporact package 
-- automated reporting functionality
-- crop yield factor pipeline and notebook (possibility)
+- Further improve the scripts based on user feedback to improve stability and use
+
+## Repository updates planned until Dec 2022: 
 
 
 ## Acknowledgement  
