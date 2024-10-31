@@ -1,5 +1,25 @@
 ![alt text](https://github.com/eLEAF-Github/WAPORACT/blob/master/images/wapor_banner.png?raw=true)
 
+# Update 2024-10-1 IMPORTANT: Interested in wapor v3 data please use wapordl (https://bitbucket.org/cioapps/wapordl/)
+
+This repo is no longer maintained. If your interested in accessing wapor v2 data or calculating performance indicators feel free to pull this repo and work with the code. 
+However if your interested in wapor v3 data then I reccomend you use wapordl. This ia package developed by Bert Coever at the FAO that is simple to use, stable and reliable.
+
+wapordl: https://bitbucket.org/cioapps/wapordl/
+
+it can also be accessed directly via conda.
+
+If your interested in carrying out zonal statistics (field calculations) on wapor v3 data. We have built on the original wapordl package. The methods to
+do this can be found here:
+
+https://github.com/eLEAF-Github/wapordl-edit
+
+However if your not interested in zonal statistics I reccomend using the original wapordl package
+
+---------------------------------------------------
+
+# NOTE:
+
 # Water Productivity in practice: WAPORACT  
 _Version 0.2_   
 _2022/2/10_
@@ -114,14 +134,9 @@ an installation video will soon be available at: https://www.youtube.com/watch?v
 
 ## In Development 
 
-- running tutorial 1B video
-- running tutorial 2A video
-- running tutorial 2B video
-- docstings updated to numpy style (complete this)
-- update of wiki content to match the 0.2.3 waporact package 
-- Further improve the scripts based on user feedback to improve stability and use
-
 ## Repository updates planned until Dec 2022: 
+
+No more repository updates were made after Jan 2023
 
 
 ## Acknowledgement  
